@@ -18,8 +18,6 @@ import jax
 from jax import random
 import jax.numpy as jnp
 
-
-
 def generate_data( N = 12*10**6        #--population size 
                   ,I0 = 5./(12*10**6)  #--initial proportion of infectors
                   ,E0 = 5./(12*10**6)  #--initial proportion of exposed
@@ -31,6 +29,7 @@ def generate_data( N = 12*10**6        #--population size
                   ,gamma  = 1/.2
                   ,kappa  = 1./7
                   ,ph     = 0.025
+                  ,noise  = 5.95  
                   ,rng_key=None):       
 
     def SEIHR(states,t, params):
@@ -65,7 +64,7 @@ def generate_data( N = 12*10**6        #--population size
     inc_hosps     = np.clip(np.diff(cum_hosps)*N, 0, np.inf)
 
     #--add noise to inc_hosps
-    noisy_hosps = np.asarray(dist.NegativeBinomial2( inc_hosps, 5.95 ).sample(rng_key))
+    noisy_hosps = np.asarray(dist.NegativeBinomial2( inc_hosps, noise ).sample(rng_key))
 
     #--compute the true peak
     time_at_peak = np.argmax(inc_hosps)
@@ -105,9 +104,10 @@ def SEIRH_Forecast(rng_key, training_data, mask, N, ps, total_window_of_observat
 
         gamma = 1./2  #--presets
         kappa = 1./7  #--presets
-        phi   = 0.025 #--presets
 
-        r0  = numpyro.sample("R0", dist.Uniform(0.75,4))
+        #phi   = 0.025 #--presets
+        phi = numpyro.sample("phi", dist.Beta(0.025*10, (1-0.025)*10))
+        r0  = numpyro.sample("R0" , dist.Uniform(0.75,4))
 
         beta = r0*gamma*(1./ps)
 
@@ -148,7 +148,7 @@ def SEIRH_Forecast(rng_key, training_data, mask, N, ps, total_window_of_observat
         inc_hosps = numpyro.deterministic("inc_hosps",inc_hosps)
 
         if mask is not None:
-            with numpyro.handlers.mask(mask_array=mask):
+            with numpyro.handlers.mask(mask=mask):
                 sim = numpyro.sample("sim_inc_hosps", dist.NegativeBinomial2(inc_hosps[:T], 10), obs = training_data)
         else:
             sim = numpyro.sample("sim_inc_hosps", dist.NegativeBinomial2(inc_hosps[:T], 10), obs = training_data)
@@ -156,7 +156,12 @@ def SEIRH_Forecast(rng_key, training_data, mask, N, ps, total_window_of_observat
     nuts_kernel = NUTS(model)
     mcmc        = MCMC( nuts_kernel , num_warmup=1500, num_samples=2000,progress_bar=True)
 
-    mcmc.run(rng_key, extra_fields=('potential_energy',), training_data = training_data, ttl = N, ps = ps, times = times)
+    mcmc.run(rng_key, extra_fields=('potential_energy',)
+             , training_data = training_data
+             , ttl = N
+             , ps = ps
+             , times = total_window_of_observation
+             , mask = mask)
     mcmc.print_summary()
     samples = mcmc.get_samples()
 
@@ -166,23 +171,38 @@ def SEIRH_Forecast(rng_key, training_data, mask, N, ps, total_window_of_observat
 if __name__ == "__main__":
     rng_key     = random.PRNGKey(0)
     
-    inc_hosps, noisy_hosps, time_at_peak = generate_data(rng_key=rng_key, sigma = 1./7)
-    training_data, truth_data, mask = collect_training_data(inc_hosps,noisy_hosps,time_at_peak,0.50, plus_peak=True)
-    
+    inc_hosps, noisy_hosps, time_at_peak = generate_data(rng_key=rng_key, sigma = 1./7, noise = 100)
+    training_data__withpeak, truth_data, mask = collect_training_data(inc_hosps,noisy_hosps
+                                                            ,time_at_peak
+                                                            ,0.75
+                                                            , plus_peak=True)
     N     = 12*10**6
     ps    = 0.10
     total_window_of_observation = 500
-    samples = SEIRH_Forecast(rng_key, training_data, mask, N, ps, total_window_of_observation ):
-    
-    #--plot
-    plt.scatter(times[1:train_N], noisy_hosps[1:train_N], lw=1, color="blue", alpha=1,s=3)
-    plt.scatter(times[train_N+1:] , noisy_hosps[train_N:], lw=1 , color="black", alpha=1,s=3)
-    
-    plt.plot(times[1:], inc_hosps, color="black")
+    samples__wpeak = SEIRH_Forecast(rng_key, training_data__withpeak, mask, N, ps, total_window_of_observation )
+    predicted_inc_hosps__wpeak = samples__wpeak["inc_hosps"].mean(0)
 
-    predicted_inc_hosps = samples["inc_hosps"].mean(0)
+    #--plot without peak
+    inc_hosps, noisy_hosps, time_at_peak = generate_data(rng_key=rng_key, sigma = 1./7, noise = 100)
+    training_data__wopeak, truth_data, mask = collect_training_data(inc_hosps,noisy_hosps
+                                                            ,time_at_peak
+                                                            ,0.75
+                                                            , plus_peak=False)
+    samples__wopeak = SEIRH_Forecast(rng_key, training_data__wopeak, mask, N, ps, total_window_of_observation )
+    predicted_inc_hosps__wopeak = samples__wopeak["inc_hosps"].mean(0)
+    
 
-    plt.plot(predicted_inc_hosps, color= "red", ls='--')
+    fig,ax = plt.subplots()
+    
+    #--plot with peak
+    times = np.arange(0,500)
+    train_N = len(training_data__withpeak)
+    
+    ax.scatter(times[:train_N], training_data__withpeak, lw=1, color="blue", alpha=1,s=3)
+    ax.plot(times[1:], inc_hosps, color="black")
+
+    ax.plot(predicted_inc_hosps__wpeak, color= "purple", ls='--')
+    ax.plot(predicted_inc_hosps__wopeak, color= "red", ls='--')
     
     plt.show()
 
