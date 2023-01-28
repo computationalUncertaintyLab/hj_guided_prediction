@@ -16,6 +16,8 @@ from numpyro.distributions import constraints
 
 from joblib import Parallel, delayed
 
+import scienceplots
+
 import jax
 from jax import random
 import jax.numpy as jnp
@@ -184,14 +186,20 @@ def generate_multiple_noisy_measurements_of_peak_and_location(time_at_peak,inc_h
     noisy_peaks = np.asarray(dist.NegativeBinomial2( peak_value, noise ).sample(rng_key, sample_shape = (num_of_measurements,)  ))
 
     #--uniform distribution of time at peak
-    noisy_time_at_peaks = np.random.randint(low = -14, high=14, size = (num_of_measurements,))
+    noisy_time_at_peaks = time_at_peak + np.random.randint(low = -14, high=14, size = (num_of_measurements,))
     
     
     repeated_noisy_hosps = np.repeat(noisy_hosps[np.newaxis],num_of_measurements,0).T
 
-    for noisy_time, noisy_value in zip(noisy_time_at_peaks, noisy_peaks): 
-        repeated_noisy_hosps[noisy_time] = noisy_value
-    return repeated_noisy_hosps.T
+    for n,(noisy_time, noisy_value) in enumerate(zip(noisy_time_at_peaks, noisy_peaks)):
+        repeated_noisy_hosps[noisy_time,n] = noisy_value
+    return repeated_noisy_hosps.T, noisy_peaks, noisy_time_at_peaks
+
+def mm2inch(x):
+    return x/25.4
+
+def stamp(ax,s):
+    ax.text(0.0125,0.975,s=s,fontweight="bold",fontsize=10,ha="left",va="top",transform=ax.transAxes)
 
 if __name__ == "__main__":
     rng_key     = random.PRNGKey(0)    #--seed for random number generation
@@ -241,7 +249,8 @@ if __name__ == "__main__":
         predicted_inc_hosps__sample = samples["inc_hosps"].mean(0)
         return predicted_inc_hosps__sample
     process = lambda d: process_data_and_make_prediction(d, pct = 0.20, inc_hosps = inc_hosps, time_at_peak = time_at_peak )
-        
+
+    
     rslts = Parallel(n_jobs=20)(delayed(process)(i) for i in repeated_training_data)
     
     store_predictions = np.zeros((num_of_measurements,total_window_of_observation))
@@ -251,44 +260,75 @@ if __name__ == "__main__":
 
     lower_2p5__ensemble,lower25__ensemble, upper75__ensemble, upper97p5__ensemble = np.percentile( store_predictions, [2.5, 25, 75, 97.5], 0)
 
-
     #--multiple measurrment of noisy peak and noisy value
-    repeated_training_data__peakandvalue = generate_multiple_noisy_measurements_of_peak_and_location(time_at_peak,inc_hosps, noisy_hosps, noise, rng_key, num_of_measurements)
+    repeated_training_data__peakandvalue, noisy_peak_values, noisy_peak_times = generate_multiple_noisy_measurements_of_peak_and_location(time_at_peak,inc_hosps, noisy_hosps, noise, rng_key, num_of_measurements)
+
+    def process_data_and_make_prediction(d,pct,inc_hosps,time_at_peak):
+        training_data__withpeak, truth_data, mask = collect_training_data(inc_hosps
+                                                                          ,d
+                                                                          ,time_at_peak
+                                                                          ,pct
+                                                                          ,plus_peak=True)
+        samples = SEIRH_Forecast(rng_key, training_data__withpeak, mask, N, ps, total_window_of_observation )
+        predicted_inc_hosps__sample = samples["inc_hosps"].mean(0)
+        return predicted_inc_hosps__sample
+    process = lambda d,t: process_data_and_make_prediction(d, pct = 0.20, inc_hosps = inc_hosps, time_at_peak = t )
+    
+    rslts = Parallel(n_jobs=20)(delayed(process)(d,t) for d,t in zip(repeated_training_data__peakandvalue,noisy_peak_times))
+ 
+    store_predictions_pv = np.zeros((num_of_measurements,total_window_of_observation))
+    for n,row in enumerate(rslts):
+        store_predictions_pv[n,:] = row
+    mean_prediction_peak_and_value = store_predictions_pv.mean(0)
+
+    lower_2p5__ensemble_pv,lower25__ensemble_pv, upper75__ensemble_pv, upper97p5__ensemble_pv = np.percentile( store_predictions_pv, [2.5, 25, 75, 97.5], 0)
     
     
     #-plot
+    plt.style.use('science')
+    
     fig,axs = plt.subplots(2,2)
     times = np.arange(0,total_window_of_observation)
     
     #--plot truth on all graphs
-    for ax in axs:
-        ax.plot(times[1:], inc_hosps, color="black")
+    for ax in axs.flatten():
+        ax.plot(times[1:], inc_hosps, color="black", label = "Truth")
 
-    ax = axs[0]
+    ax = axs[0,0]
     
     #--plot without peak
-    ax.plot(predicted_inc_hosps__wopeak, color= "red", ls='--')
-    ax.fill_between(times, lower_2p5__w0peak,upper97p5__w0peak,  color= "red" ,ls='--', alpha = 0.25)
-    ax.fill_between(times, lower_2p5__w0peak,upper97p5__w0peak,  color= "red" ,ls='--', alpha = 0.25)
+    ax.plot(predicted_inc_hosps__wopeak, color= "red", ls='--', label = "Mean prediction")
+    ax.scatter(times[:len(training_data__wopeak)], training_data__wopeak, lw=1, color="blue", alpha=1,s=3, label = "Surveillance data (up to day 16) ")
+    
+    ax.fill_between(times, lower_2p5__w0peak,upper97p5__w0peak,  color= "red" ,ls='--', alpha = 0.25, label = "75 and 95 PI")
+    ax.fill_between(times, lower25__w0peak,upper75__w0peak,  color= "red" ,ls='--', alpha = 0.25)
 
+    ax.set_ylim(0,2500)
+    ax.set_xlim(0,200)
+    ax.set_ylabel("Incident hospitlizations", fontsize=10)
 
-    ax.set_ylim(0,3000)
+    stamp(ax,"A.")
+
+    ax.legend(fontsize=10,frameon=False)
     
     #--plot with single noisy measurement of intensity
-    ax = axs[1]
+    ax = axs[0,1]
 
     train_N = len(training_data__withpeak)
 
     #--plot simulated data    
-    ax.scatter(times[:train_N], training_data__withpeak, lw=1, color="blue", alpha=1,s=3)
+    ax.scatter(times[:train_N], training_data__withpeak, lw=1, color="blue", alpha=1,s=3, label = "Surveillance data (up to day 16) ")
     
     ax.plot(times, predicted_inc_hosps__wpeak        , color= "purple" ,ls='--')
     ax.fill_between(times, lower_2p5__wpeak,upper97p5__wpeak,  color= "purple" ,ls='--', alpha = 0.25)
-    ax.fill_between(times, lower_2p5__wpeak,upper97p5__wpeak,  color= "purple" ,ls='--', alpha = 0.25)
+    ax.fill_between(times, lower25__wpeak,upper75__wpeak,  color= "purple" ,ls='--', alpha = 0.25)
 
-    ax.set_ylim(0,3000)
+    ax.set_ylim(0,2500)
+    ax.set_xlim(0,200)
 
-    ax = axs[2]
+    stamp(ax,"B.")
+
+    ax = axs[1,0]
     
     #--plot with multi measurements of peak
     #--plot simulated data       
@@ -299,13 +339,39 @@ if __name__ == "__main__":
     
     ax.plot(times, mean_prediction, color= "blue", ls='--')
     ax.fill_between(times, lower_2p5__ensemble,upper97p5__ensemble,  color= "blue" ,ls='--', alpha = 0.25)
-    ax.fill_between(times, lower_2p5__ensemble,upper97p5__ensemble,  color= "blue" ,ls='--', alpha = 0.25)
+    ax.fill_between(times, lower25__ensemble,upper75__ensemble,  color= "blue" ,ls='--', alpha = 0.25)
 
-    ax.set_ylim(0,3000)
+    ax.set_ylim(0,2500)
+    ax.set_xlim(0,200)
 
+    ax.set_ylabel("Incident hospitlizations", fontsize=10)
+    ax.set_xlabel("Time (days)", fontsize=10)
 
-
+    stamp(ax,"C.")
     
+    ax = axs[1,1]
+    
+    #--plot with multi measurements of peak
+    #--plot simulated data       
+
+    ax.scatter(times[:train_N], training_data__withpeak, lw=1, color="blue", alpha=1,s=3)
+    for d,noisy_peak in zip(repeated_training_data__peakandvalue,noisy_peak_times):
+        ax.scatter(times[noisy_peak], d[noisy_peak], lw=1, color="blue", alpha=1,s=3)
+    
+    ax.plot(times, mean_prediction_peak_and_value, color= "orange", ls='--')
+    ax.fill_between(times, lower_2p5__ensemble_pv,upper97p5__ensemble_pv,  color= "orange" ,ls='--', alpha = 0.25)
+    ax.fill_between(times, lower25__ensemble_pv,upper75__ensemble_pv,  color= "orange" ,ls='--', alpha = 0.25)
+
+    ax.set_ylim(0,2500)
+    ax.set_xlim(0,200)
+    ax.set_xlabel("Time (days)", fontsize=10)
+
+    stamp(ax,"D.")
+    
+    fig.set_tight_layout(True)
+
+    w = mm2inch(183)
+    fig.set_size_inches( w, w/1.5 )
 
     plt.show()
 
