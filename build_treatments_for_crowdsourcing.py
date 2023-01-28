@@ -153,10 +153,6 @@ def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, h
         inc_hosps = (inc_hosp_proportion*ttl).reshape(-1,)
         inc_hosps = numpyro.deterministic("inc_hosps",inc_hosps)
 
-        #--clip inc hosps
-        #inc_hosps = jnp.clip(inc_hosps,10**-10,N+1)
-        #inc_hosps = jnp.nan_to_num(inc_hosps,1.)
-
         mask = ~jnp.isnan(inc_hosps)
         
         #--surveillance data
