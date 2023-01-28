@@ -55,7 +55,7 @@ def generate_data( N = 12*10**6        #--population size
         return np.stack([ds_dt,de_dt,di_dt,dh_dt,dr_dt, dc_dt])
 
     #--set additional parameters for integration
-    S0 = 1*ps - I0
+    S0 = 1*ps - E0 - I0
     R0 = 1 - S0 - I0 - E0
 
     times = jnp.arange(0,T,1)     
@@ -98,6 +98,27 @@ def collect_training_data(inc_hosps,noisy_hosps,time_at_peak,pct_training_data, 
         
         return training_data, noisy_peak_value, truth_data
 
+def collect_training_data__byweek(inc_hosps,noisy_hosps,time_at_peak,week_before_peak, plus_peak=False):
+    train_N       =  time_at_peak - 7*week_before_peak
+    
+    if plus_peak==False:
+        training_data = noisy_hosps[:train_N]
+        truth_data    = inc_hosps[:train_N]
+        return training_data, None, truth_data
+    else:
+        total_window_of_observation = len(inc_hosps)
+        
+        training_data = noisy_hosps[:train_N]            #--data up to pct of peak
+        noisy_peak_value = noisy_hosps[time_at_peak]       #--data AT peak
+
+        truth_data = np.nan*np.ones((total_window_of_observation,))    #--all nans to start
+        truth_data[:train_N]     = inc_hosps[:train_N]                 #--data up to pct of peak
+        truth_data[time_at_peak] = inc_hosps[time_at_peak]             #--data AT peak
+        
+        return training_data, noisy_peak_value, truth_data
+
+
+    
 def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, hj_peaks=None, hj_peak_intensities=None):
     def model(training_data,ttl, ps, times):
         #--derive from data
@@ -204,52 +225,55 @@ if __name__ == "__main__":
     else:
         os.makedirs("./for_crowdsourcing/")
 
-    for pct in [0.20,0.40,0.60,0.80,1.20]:
+    for week in [6,5,4,3,2,1,0,-1,-2]:
         for model_included in [0,1]:
             #--generate simulated data
             inc_hosps, noisy_hosps, time_at_peak = generate_data(rng_key=rng_key, sigma = 1./2, gamma = 1./1,  noise = 100, T = total_window_of_observation)
-            training_data, noisy_peak_value, truth_data = collect_training_data(inc_hosps,noisy_hosps
+            training_data, noisy_peak_value, truth_data = collect_training_data__byweek(inc_hosps,noisy_hosps
                                                                     ,time_at_peak
-                                                                    ,pct
+                                                                    ,week
                                                                     ,plus_peak=True)
 
-            if os.path.isdir("./for_crowdsourcing/data_collection__{:.2f}__{:d}/".format(pct, model_included)):
+            if os.path.isdir("./for_crowdsourcing/data_collection__{:d}__{:d}/".format(week, model_included)):
                 pass
             else:
-                os.makedirs("./for_crowdsourcing/data_collection__{:.2f}__{:d}/".format(pct, model_included))
+                os.makedirs("./for_crowdsourcing/data_collection__{:d}__{:d}/".format(week, model_included))
             
-            pd.DataFrame({"training_data":training_data}).to_csv("./for_crowdsourcing/data_collection__{:.2f}__{:d}/training_data__{:.2f}__{:d}.csv".format(pct, model_included, pct, model_included))
-            pd.DataFrame({"truth_data":truth_data}).to_csv("./for_crowdsourcing/data_collection__{:.2f}__{:d}/truth_data__{:.2f}__{:d}.csv".format(pct, model_included, pct, model_included))
-
+            pd.DataFrame({"training_data":training_data}).to_csv("./for_crowdsourcing/data_collection__{:d}__{:d}/training_data__{:d}__{:d}.csv".format(week, model_included, week, model_included))
+            pd.DataFrame({"truth_data":truth_data}).to_csv("./for_crowdsourcing/data_collection__{:d}__{:d}/truth_data__{:d}__{:d}.csv".format(week, model_included, week, model_included))
+            pd.DataFrame({"time_at_peak":[time_at_peak]}).to_csv("./for_crowdsourcing/data_collection__{:d}__{:d}/time_at_peak__{:d}__{:d}.csv".format(week, model_included, week, model_included))
+            
             #-plot
-            plt.style.use('science')
+            plt.style.use(['science','grid'])
 
             fig,ax = plt.subplots()
-            times = np.arange(0,total_window_of_observation)
+            times = np.arange(1,total_window_of_observation+1)
 
             #--plot without peak
-            ax.scatter(times[:len(training_data)], training_data, lw=1, color="blue", alpha=1,s=3, label = "Surveillance data (up to day 16) ")
+            ax.scatter(times[:len(training_data)], training_data, lw=1, color="blue", alpha=1,s=3, label = "Surveillance data")
 
             if model_included:
                 #--forecast with out peak data included
                 samples__wopeak = SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation )
 
-                pickle.dump( samples__wopeak, open("./for_crowdsourcing/data_collection__{:.2f}__{:d}/samples__{:.2f}__{:d}.pkl".format(pct, model_included, pct, model_included) ,"wb") )
+                pickle.dump( samples__wopeak, open("./for_crowdsourcing/data_collection__{:d}__{:d}/samples__{:d}__{:d}.pkl".format(week, model_included, week, model_included) ,"wb") )
 
-                predicted_inc_hosps__wopeak = samples__wopeak["inc_hosps"].mean(0)
+                predicted_inc_hosps__wopeak = np.percentile(samples__wopeak["inc_hosps"], 50, 0)
                 lower_2p5__w0peak,lower25__w0peak, upper75__w0peak, upper97p5__w0peak = np.percentile( samples__wopeak["inc_hosps"], [2.5, 25, 75, 97.5], 0)
 
                 quantiles = pd.DataFrame({"mean": predicted_inc_hosps__wopeak
                                           , "lower_2p5":lower_2p5__w0peak, "lower25__w0peak": lower25__w0peak
                                           , "upper75__w0peak":upper75__w0peak, "upper97p5__w0peak":upper97p5__w0peak  })
-                quantiles.to_csv("./for_crowdsourcing/data_collection__{:.2f}__{:d}/quantiles__{:.2f}__{:d}.csv".format(pct, model_included, pct, model_included))
+                quantiles.to_csv("./for_crowdsourcing/data_collection__{:d}__{:d}/quantiles__{:d}__{:d}.csv".format(week, model_included, week, model_included))
 
-                ax.plot(predicted_inc_hosps__wopeak, color= "red", ls='--', label = "Mean prediction")
+                ax.plot(times, predicted_inc_hosps__wopeak, color= "red", ls='--', label = "Median prediction")
                 ax.fill_between(times, lower_2p5__w0peak,upper97p5__w0peak,  color= "red" ,ls='--', alpha = 0.25, label = "75 and 95 PI")
                 ax.fill_between(times, lower25__w0peak,upper75__w0peak,  color= "red" ,ls='--', alpha = 0.25)
 
             ax.set_ylim(0,2500)
-            ax.set_xlim(0,200)
+            ax.set_xlim(1,210)
+            ax.set_xticks([1,25,50,75,100,125,150,175,200,210])
+            
             ax.set_ylabel("Incident hospitalizations", fontsize=10)
 
             stamp(ax,"A.")
@@ -261,5 +285,5 @@ if __name__ == "__main__":
             w = mm2inch(183)
             fig.set_size_inches( w, w/1.5 )
 
-            plt.savefig("./for_crowdsourcing/data_collection__{:.2f}__{:d}/plot__{:.2f}__{:d}.pdf".format(pct, model_included, pct, model_included))
+            plt.savefig("./for_crowdsourcing/data_collection__{:d}__{:d}/plot__{:d}__{:d}.pdf".format(week, model_included, week, model_included))
             plt.close()
