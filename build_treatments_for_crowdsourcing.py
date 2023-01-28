@@ -234,7 +234,7 @@ if __name__ == "__main__":
                 #--forecast with out peak data included
                 samples__wopeak = SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation )
 
-                pickle.dump( samples__wopeak, open("./for_crowdsourcing/data_collection__{:.2f}__{:d}/samples__{:.2f}__{:d}.csv".format(pct, model_included, pct, model_included) ,"wb") )
+                pickle.dump( samples__wopeak, open("./for_crowdsourcing/data_collection__{:.2f}__{:d}/samples__{:.2f}__{:d}.pkl".format(pct, model_included, pct, model_included) ,"wb") )
 
                 predicted_inc_hosps__wopeak = samples__wopeak["inc_hosps"].mean(0)
                 lower_2p5__w0peak,lower25__w0peak, upper75__w0peak, upper97p5__w0peak = np.percentile( samples__wopeak["inc_hosps"], [2.5, 25, 75, 97.5], 0)
