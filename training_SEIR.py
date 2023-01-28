@@ -374,6 +374,3 @@ if __name__ == "__main__":
     fig.set_size_inches( w, w/1.5 )
 
     plt.show()
-
-
- 
