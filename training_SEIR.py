@@ -14,6 +14,8 @@ import numpyro
 from numpyro.infer import MCMC, NUTS, HMC, Predictive
 from numpyro.distributions import constraints
 
+from joblib import Parallel, delayed
+
 import jax
 from jax import random
 import jax.numpy as jnp
@@ -64,7 +66,7 @@ def generate_data( N = 12*10**6        #--population size
     inc_hosps     = np.clip(np.diff(cum_hosps)*N, 0, np.inf)
 
     #--add noise to inc_hosps
-    noisy_hosps = np.asarray(dist.NegativeBinomial2( inc_hosps, noise ).sample(rng_key))
+    noisy_hosps = np.asarray(dist.NegativeBinomial2( inc_hosps, noise ).sample(rng_key)) 
 
     #--compute the true peak
     time_at_peak = np.argmax(inc_hosps)
@@ -72,12 +74,13 @@ def generate_data( N = 12*10**6        #--population size
     return inc_hosps, noisy_hosps, time_at_peak
 
 
-def collect_training_data(inc_hosps,training_data,time_at_peak,pct_training_data, plus_peak=False):
+def collect_training_data(inc_hosps,noisy_hosps,time_at_peak,pct_training_data, plus_peak=False):
     train_N       = int(time_at_peak*pct_training_data)
-    training_data = noisy_hosps[:train_N]
-    truth_data    = inc_hosps[:train_N]
-
+    
     if plus_peak==False:
+        training_data = noisy_hosps[:train_N]
+        truth_data    = inc_hosps[:train_N]
+
         return training_data, truth_data, None
     else:
         total_window_of_observation = len(inc_hosps)
@@ -102,10 +105,9 @@ def SEIRH_Forecast(rng_key, training_data, mask, N, ps, total_window_of_observat
         
         sigma = numpyro.sample("sigma", dist.Gamma( 1/2., 1. ) )
 
-        gamma = 1./2  #--presets
+        gamma = 1./1  #--presets
         kappa = 1./7  #--presets
 
-        #phi   = 0.025 #--presets
         phi = numpyro.sample("phi", dist.Beta(0.025*10, (1-0.025)*10))
         r0  = numpyro.sample("R0" , dist.Uniform(0.75,4))
 
@@ -167,43 +169,144 @@ def SEIRH_Forecast(rng_key, training_data, mask, N, ps, total_window_of_observat
 
     return samples
 
+def generate_multiple_noisy_measurements_of_peak(time_at_peak,inc_hosps, noisy_hosps, noise, rng_key, num_of_measurements):
+    peak_value = inc_hosps[time_at_peak]
+
+    noisy_peaks = np.asarray(dist.NegativeBinomial2( peak_value, noise ).sample(rng_key, sample_shape = (num_of_measurements,)  ))
+    
+    repeated_noisy_hosps = np.repeat(noisy_hosps[np.newaxis],num_of_measurements,0).T
+    repeated_noisy_hosps[time_at_peak] = noisy_peaks
+
+    return repeated_noisy_hosps.T
+
+def generate_multiple_noisy_measurements_of_peak_and_location(time_at_peak,inc_hosps, noisy_hosps, noise, rng_key, num_of_measurements):
+    peak_value = inc_hosps[time_at_peak]
+    noisy_peaks = np.asarray(dist.NegativeBinomial2( peak_value, noise ).sample(rng_key, sample_shape = (num_of_measurements,)  ))
+
+    #--uniform distribution of time at peak
+    noisy_time_at_peaks = np.random.randint(low = -14, high=14, size = (num_of_measurements,))
+    
+    
+    repeated_noisy_hosps = np.repeat(noisy_hosps[np.newaxis],num_of_measurements,0).T
+
+    for noisy_time, noisy_value in zip(noisy_time_at_peaks, noisy_peaks): 
+        repeated_noisy_hosps[noisy_time] = noisy_value
+    return repeated_noisy_hosps.T
 
 if __name__ == "__main__":
-    rng_key     = random.PRNGKey(0)
+    rng_key     = random.PRNGKey(0)    #--seed for random number generation
+    N     = 12*10**6                   #--Population of the state of PA
+    ps    = 0.12                       #--Percent of the population that is considered to be susceptible
+    total_window_of_observation = 210  #--total number of time units that we will observe
     
-    inc_hosps, noisy_hosps, time_at_peak = generate_data(rng_key=rng_key, sigma = 1./7, noise = 100)
+    
+    #--generate simulated data
+    inc_hosps, noisy_hosps, time_at_peak = generate_data(rng_key=rng_key, sigma = 1./2, gamma = 1./1,  noise = 100, T = total_window_of_observation)
     training_data__withpeak, truth_data, mask = collect_training_data(inc_hosps,noisy_hosps
                                                             ,time_at_peak
-                                                            ,0.75
-                                                            , plus_peak=True)
-    N     = 12*10**6
-    ps    = 0.10
-    total_window_of_observation = 500
+                                                            ,0.20
+                                                            ,plus_peak=True)
+
+
+    #--forecast with peak data included
     samples__wpeak = SEIRH_Forecast(rng_key, training_data__withpeak, mask, N, ps, total_window_of_observation )
     predicted_inc_hosps__wpeak = samples__wpeak["inc_hosps"].mean(0)
 
-    #--plot without peak
-    inc_hosps, noisy_hosps, time_at_peak = generate_data(rng_key=rng_key, sigma = 1./7, noise = 100)
+    lower_2p5__wpeak,lower25__wpeak, upper75__wpeak, upper97p5__wpeak = np.percentile( samples__wpeak["inc_hosps"], [2.5, 25, 75, 97.5], 0)
+
+    #--
     training_data__wopeak, truth_data, mask = collect_training_data(inc_hosps,noisy_hosps
                                                             ,time_at_peak
-                                                            ,0.75
+                                                            ,0.20
                                                             , plus_peak=False)
+    #--forecast with out peak data included
     samples__wopeak = SEIRH_Forecast(rng_key, training_data__wopeak, mask, N, ps, total_window_of_observation )
+    
     predicted_inc_hosps__wopeak = samples__wopeak["inc_hosps"].mean(0)
-    
+    lower_2p5__w0peak,lower25__w0peak, upper75__w0peak, upper97p5__w0peak = np.percentile( samples__wopeak["inc_hosps"], [2.5, 25, 75, 97.5], 0)
 
-    fig,ax = plt.subplots()
-    
-    #--plot with peak
-    times = np.arange(0,500)
-    train_N = len(training_data__withpeak)
-    
-    ax.scatter(times[:train_N], training_data__withpeak, lw=1, color="blue", alpha=1,s=3)
-    ax.plot(times[1:], inc_hosps, color="black")
 
-    ax.plot(predicted_inc_hosps__wpeak, color= "purple", ls='--')
+    #--weighted average of forecasts with repeated peak measurements
+    num_of_measurements = 100
+    noise = 100
+    repeated_training_data = generate_multiple_noisy_measurements_of_peak(time_at_peak, inc_hosps, noisy_hosps, noise, rng_key, num_of_measurements = num_of_measurements)
+
+    def process_data_and_make_prediction(d,pct,inc_hosps,time_at_peak):
+        training_data__withpeak, truth_data, mask = collect_training_data(inc_hosps
+                                                                          ,d
+                                                                          ,time_at_peak
+                                                                          ,pct
+                                                                          ,plus_peak=True)
+        samples = SEIRH_Forecast(rng_key, training_data__withpeak, mask, N, ps, total_window_of_observation )
+        predicted_inc_hosps__sample = samples["inc_hosps"].mean(0)
+        return predicted_inc_hosps__sample
+    process = lambda d: process_data_and_make_prediction(d, pct = 0.20, inc_hosps = inc_hosps, time_at_peak = time_at_peak )
+        
+    rslts = Parallel(n_jobs=20)(delayed(process)(i) for i in repeated_training_data)
+    
+    store_predictions = np.zeros((num_of_measurements,total_window_of_observation))
+    for n,row in enumerate(rslts):
+        store_predictions[n,:] = row
+    mean_prediction = store_predictions.mean(0)
+
+    lower_2p5__ensemble,lower25__ensemble, upper75__ensemble, upper97p5__ensemble = np.percentile( store_predictions, [2.5, 25, 75, 97.5], 0)
+
+
+    #--multiple measurrment of noisy peak and noisy value
+    repeated_training_data__peakandvalue = generate_multiple_noisy_measurements_of_peak_and_location(time_at_peak,inc_hosps, noisy_hosps, noise, rng_key, num_of_measurements)
+    
+    
+    #-plot
+    fig,axs = plt.subplots(2,2)
+    times = np.arange(0,total_window_of_observation)
+    
+    #--plot truth on all graphs
+    for ax in axs:
+        ax.plot(times[1:], inc_hosps, color="black")
+
+    ax = axs[0]
+    
+    #--plot without peak
     ax.plot(predicted_inc_hosps__wopeak, color= "red", ls='--')
+    ax.fill_between(times, lower_2p5__w0peak,upper97p5__w0peak,  color= "red" ,ls='--', alpha = 0.25)
+    ax.fill_between(times, lower_2p5__w0peak,upper97p5__w0peak,  color= "red" ,ls='--', alpha = 0.25)
+
+
+    ax.set_ylim(0,3000)
     
+    #--plot with single noisy measurement of intensity
+    ax = axs[1]
+
+    train_N = len(training_data__withpeak)
+
+    #--plot simulated data    
+    ax.scatter(times[:train_N], training_data__withpeak, lw=1, color="blue", alpha=1,s=3)
+    
+    ax.plot(times, predicted_inc_hosps__wpeak        , color= "purple" ,ls='--')
+    ax.fill_between(times, lower_2p5__wpeak,upper97p5__wpeak,  color= "purple" ,ls='--', alpha = 0.25)
+    ax.fill_between(times, lower_2p5__wpeak,upper97p5__wpeak,  color= "purple" ,ls='--', alpha = 0.25)
+
+    ax.set_ylim(0,3000)
+
+    ax = axs[2]
+    
+    #--plot with multi measurements of peak
+    #--plot simulated data       
+
+    ax.scatter(times[:train_N], training_data__withpeak, lw=1, color="blue", alpha=1,s=3)
+    for d in repeated_training_data:
+        ax.scatter(times[time_at_peak], d[time_at_peak], lw=1, color="blue", alpha=1,s=3)
+    
+    ax.plot(times, mean_prediction, color= "blue", ls='--')
+    ax.fill_between(times, lower_2p5__ensemble,upper97p5__ensemble,  color= "blue" ,ls='--', alpha = 0.25)
+    ax.fill_between(times, lower_2p5__ensemble,upper97p5__ensemble,  color= "blue" ,ls='--', alpha = 0.25)
+
+    ax.set_ylim(0,3000)
+
+
+
+    
+
     plt.show()
 
 
