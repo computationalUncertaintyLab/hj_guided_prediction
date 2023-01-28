@@ -132,8 +132,8 @@ def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, h
             states = jnp.vstack( (ns,ne,ni,nh,nr, nc) )
             return states, states
 
-        E0 = numpyro.sample( "E0", dist.Uniform(1./ttl, 5./ttl) )
-        I0 = numpyro.sample( "I0", dist.Uniform(1./ttl, 5./ttl) ) 
+        E0 = numpyro.sample( "E0", dist.Uniform(1./ttl, 20./ttl) )
+        I0 = numpyro.sample( "I0", dist.Uniform(1./ttl, 20./ttl) ) 
 
         S0 = ps*1. - I0
         H0 = 0
@@ -143,25 +143,27 @@ def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, h
 
         #--sim
         states = numpyro.deterministic("states",states)
+
+        #inc_hosp_proportion = jnp.clip(states[:,-1], a_min=1./ttl)
+        inc_hosp_proportion = states[:,-1]
         
-        inc_hosps = (states[:,-1]*ttl).reshape(-1,)
+        inc_hosps = (inc_hosp_proportion*ttl).reshape(-1,)
         inc_hosps = numpyro.deterministic("inc_hosps",inc_hosps)
 
         #--clip inc hosps
-        inc_hosps = jnp.clip(inc_hosps,1.,N)
-        inc_hosps = jnp.nan_to_num(inc_hosps,1.)
-       
-        #--surveillance data
-        ll = numpyro.sample("ll_surveillance", dist.NegativeBinomial2(inc_hosps[:T], 1./3), obs = training_data)
+        #inc_hosps = jnp.clip(inc_hosps,10**-10,N+1)
+        #inc_hosps = jnp.nan_to_num(inc_hosps,1.)
 
-        #--hj data
-        if hj_peaks is not None and hj_peak_intensities is not None:
-            print(inc_hosps)
-            print(inc_hosps[hj_peaks])
-            print(hj_peak_intensities)
-            
-            ll2 = numpyro.sample("ll_hj", dist.NegativeBinomial2(inc_hosps[hj_peaks], 1./3), obs = hj_peak_intensities )
+        mask = ~jnp.isnan(inc_hosps)
         
+        #--surveillance data
+        with numpyro.handlers.mask(mask=mask[:T]):
+            ll = numpyro.sample("ll_surveillance", dist.NegativeBinomial2(inc_hosps[:T], 1./3), obs = training_data)
+
+        if hj_peaks is not None and hj_peak_intensities is not None:
+            with numpyro.handlers.mask(mask=mask[hj_peaks]):
+                ll2 = numpyro.sample("ll_hj", dist.NegativeBinomial2(inc_hosps[hj_peaks], 1./3), obs = hj_peak_intensities )
+                   
     nuts_kernel = NUTS(model)
     mcmc        = MCMC( nuts_kernel , num_warmup=1500, num_samples=2000,progress_bar=True)
 
@@ -272,6 +274,7 @@ if __name__ == "__main__":
 
     #--plot simulated data    
     ax.scatter(times[:train_N], training_data, lw=1, color="blue", alpha=1,s=3, label = "Surveillance data (up to day 16) ")
+    ax.scatter(times[time_at_peak], noisy_peak_value, lw=1, color="blue", alpha=1,s=3)
     
     ax.plot(times, predicted_inc_hosps__wpeak        , color= "purple" ,ls='--')
     ax.fill_between(times, lower_2p5__wpeak,upper97p5__wpeak,  color= "purple" ,ls='--', alpha = 0.25)
