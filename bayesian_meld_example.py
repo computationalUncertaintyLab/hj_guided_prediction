@@ -95,7 +95,7 @@ def collect_training_data(inc_hosps,noisy_hosps,time_at_peak,pct_training_data, 
         
         return training_data, noisy_peak_value, truth_data
 
-def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, hj_peaks_and_intensities):
+def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, peak_time_and_values, peak_times_only, peak_values_only, hj_peaks_and_intensities):
     def model(training_data,ttl, ps, times):
         #--derive from data
         
@@ -166,17 +166,35 @@ def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, h
         if hj_peaks_and_intensities is None:
             pass
         else:
-            corr_mat = numpyro.sample( "corr", dist.LKJ(2, 1.) ) #--prior over peak and time for HJ
-            std = numpyro.sample("std", dist.HalfCauchy(1000*jnp.ones(2,)))
-            var = jnp.sqrt(std)
-            cov_mat = jnp.matmul(jnp.matmul(jnp.diag(var), corr_mat), jnp.diag(var))
+            if peak_time_and_values:
+                d = hj_peaks_and_intensities.shape[1]
+                N = hj_peaks_and_intensities.shape[0]
 
-            N = hj_peaks_and_intensities.shape[0]
-            with numpyro.plate("observations", N):
-                ll_hj = numpyro.sample( "ll_hj", dist.MultivariateNormal( jnp.array([peak_time, peak_value]).reshape(2,), cov_mat), obs = hj_peaks_and_intensities )
+                # Vector of variances for each of the d variables
+                theta = numpyro.sample("theta", dist.HalfCauchy(jnp.ones(d)))
+
+                concentration = jnp.ones(1)  # Implies a uniform distribution over correlation matrices
+                corr_mat = numpyro.sample("corr_mat", dist.LKJ(d, concentration))
+                std = jnp.sqrt(theta)
+
+                # we can also use a faster formula `cov_mat = jnp.outer(theta, theta) * corr_mat`
+                cov_mat = jnp.matmul(jnp.matmul(jnp.diag(std), corr_mat), jnp.diag(std))
+
+                # Vector of expectations
+                mu = jnp.array([peak_time, peak_value]).reshape(2,)
+
+                with numpyro.plate("observations", N):
+                    obs = numpyro.sample("obs", dist.MultivariateNormal(mu, covariance_matrix=cov_mat), obs=hj_peaks_and_intensities)
+                    
+            elif peak_times_only:
+                s = numpyro.sample("s", dist.HalfCauchy(100*jnp.ones(1,)))
+                ll_peak_times = numpyro.sample("ll_peak_times", dist.Normal( peak_time, s ), obs = hj_peaks_and_intensities[:,0] )
+            elif peak_values_only:
+                s = numpyro.sample("s", dist.HalfCauchy(100*jnp.ones(1,)))
+                ll_peak_values = numpyro.sample("ll_peak", dist.Normal( peak_value, s ), obs = hj_peaks_and_intensities[:,-1] )
 
     nuts_kernel = NUTS(model)
-    mcmc        = MCMC( nuts_kernel , num_warmup=1500, num_samples=2000,progress_bar=True)
+    mcmc        = MCMC( nuts_kernel , num_warmup=3000, num_samples=2000,progress_bar=True)
 
     mcmc.run(rng_key, extra_fields=('potential_energy',)
              , training_data = training_data
@@ -216,36 +234,44 @@ if __name__ == "__main__":
     inc_hosps, noisy_hosps, time_at_peak = generate_data(rng_key=rng_key, sigma = 1./2, gamma = 1./1,  noise = 100, T = total_window_of_observation)
     training_data, noisy_peak_value, truth_data = collect_training_data(inc_hosps,noisy_hosps
                                                             ,time_at_peak
-                                                            ,0.80
+                                                            ,0.50
                                                             ,plus_peak=True)
 
-    #--prior information only
-    samples = SEIRH_Forecast(rng_key = rng_key
-                             , training_data = None
-                             , N  = N
-                             , ps = ps
-                             , total_window_of_observation = total_window_of_observation
-                             , hj_peaks = None
-                             , hj_peaks_and_intensities = None)
+    # #--prior information only
+    # samples = SEIRH_Forecast(rng_key = rng_key
+    #                          , training_data = None
+    #                          , N  = N
+    #                          , ps = ps
+    #                          , total_window_of_observation = total_window_of_observation
+    #                          , hj_peaks_and_intensities = None)
     
 
 
-    #--include surveillance data
-    samples_with_surv_data = SEIRH_Forecast(rng_key = rng_key
-                             , training_data = training_data
-                             , N  = N
-                             , ps = ps
-                             , total_window_of_observation = total_window_of_observation
-                             , hj_peaks_and_intensities = None)
-    
+    # #--include surveillance data
+    # samples_with_surv_data = SEIRH_Forecast(rng_key = rng_key
+    #                          , training_data = training_data
+    #                          , N  = N
+    #                          , ps = ps
+    #                          , total_window_of_observation = total_window_of_observation
+    #                          , hj_peaks_and_intensities = None)
+
+    # peaks = samples_with_surv_data["peak_time_and_value"][:,1]
+    # times = samples_with_surv_data["peak_time_and_value"][:,0]
+    # d = pd.DataFrame({"p":p,"t":t})
+
+    # sns.jointplot(x="t",y="p",data=d, kind="kde", fill=True, space=0)
+    # plt.axhline(inc_hosps[time_at_peak])
+    # plt.axvline(time_at_peak)
+
+    # plt.show()
 
     #--include surveillance data
     training_data, noisy_peaks, noisy_time_at_peaks = generate_multiple_noisy_measurements_of_peak_and_location(time_at_peak
                                                                                                                 , inc_hosps
                                                                                                                 , noisy_hosps
-                                                                                                                , noise = 10
+                                                                                                                , noise = 50
                                                                                                                 , rng_key = rng_key
-                                                                                                                , num_of_measurements = 5
+                                                                                                                , num_of_measurements = 10
                                                                                                                 , pct_training_data=0.80)                                
     
     hj_peaks_and_intensities = np.vstack([noisy_time_at_peaks, noisy_peaks]).T
@@ -254,67 +280,28 @@ if __name__ == "__main__":
                                                    , N  = N
                                                    , ps = ps
                                                    , total_window_of_observation = total_window_of_observation
-                                                   , hj_peaks_and_intensities = hj_peaks_and_intensities)
+                                                   , peak_time_and_values = True
+                                                   , peak_values_only = False
+                                                   , peak_times_only = False
+                                                   , hj_peaks_and_intensities    = hj_peaks_and_intensities)
 
     peaks = samples_with_surv_and_hj_data["peak_time_and_value"][:,1]
     times = samples_with_surv_and_hj_data["peak_time_and_value"][:,0]
-    d = pd.DataFrame({"p":p,"t":t})
+    d = pd.DataFrame({"p":peaks,"t":times})
 
     sns.jointplot(x="t",y="p",data=d, kind="kde", fill=True, space=0)
-    plt.axvline(inc_hosps[time_at_peak])
-    plt.axhline(time_at_peak)
+    plt.axhline(inc_hosps[time_at_peak])
+    plt.axvline(time_at_peak)
+
+    plt.scatter(noisy_time_at_peaks, noisy_peaks, color="black",s=3 )
 
     plt.show()
     
 
-
     #--forecast with peak data included
-    samples__wpeak = SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, hj_peaks=np.array(time_at_peak), hj_peak_intensities= np.array(noisy_peak_value) )
-    predicted_inc_hosps__wpeak = samples__wpeak["inc_hosps"].mean(0)
+    predicted_inc_hosps__whjdata= samples_with_surv_and_hj_data["inc_hosps"].mean(0)
+    lower_2p5,lower25, upper75, upper97p5 = np.percentile( samples_with_surv_and_hj_data["inc_hosps"], [2.5, 25, 75, 97.5], 0)
 
-    lower_2p5__wpeak,lower25__wpeak, upper75__wpeak, upper97p5__wpeak = np.percentile( samples__wpeak["inc_hosps"], [2.5, 25, 75, 97.5], 0)
-
-    #--forecast with out peak data included
-    samples__wopeak = SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation )
-    
-    predicted_inc_hosps__wopeak = samples__wopeak["inc_hosps"].mean(0)
-    lower_2p5__w0peak,lower25__w0peak, upper75__w0peak, upper97p5__w0peak = np.percentile( samples__wopeak["inc_hosps"], [2.5, 25, 75, 97.5], 0)
-
-
-    #--weighted average of forecasts with repeated peak measurements
-    num_of_measurements = 100
-    noise = 100
-
-
-
-    hj_peak_times = (np.ones(num_of_measurements,)*time_at_peak).astype(int)
-    #hj_peak_intensities = repeated_training_data[:,time_at_peak]
-    
-    rslts = SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, hj_peaks= hj_peak_times, hj_peak_intensities=noisy_peaks )
-
-    mean_prediction = rslts["inc_hosps"].mean(0)
-    lower_2p5__ensemble,lower25__ensemble, upper75__ensemble, upper97p5__ensemble = np.percentile( rslts["inc_hosps"], [2.5, 25, 75, 97.5], 0)
-
-    #--multiple measurrment of noisy peak and noisy value
-    rslts_pv = SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, hj_peaks=noisy_time_at_peaks, hj_peak_intensities= noisy_peaks )
-
-    mean_prediction_peak_and_value = rslts_pv["inc_hosps"].mean(0)
-    lower_2p5__ensemble_pv,lower25__ensemble_pv, upper75__ensemble_pv, upper97p5__ensemble_pv = np.percentile( rslts_pv["inc_hosps"], [2.5, 25, 75, 97.5], 0)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
     #-plot
     plt.style.use('science')
     
@@ -328,11 +315,11 @@ if __name__ == "__main__":
     ax = axs[0,0]
     
     #--plot without peak
-    ax.plot(predicted_inc_hosps__wopeak, color= "red", ls='--', label = "Mean prediction")
+    ax.plot(predicted_inc_hosps__whjdata, color= "red", ls='--', label = "Mean prediction")
     ax.scatter(times[:len(training_data)], training_data, lw=1, color="blue", alpha=1,s=3, label = "Surveillance data (up to day 16) ")
     
-    ax.fill_between(times, lower_2p5__w0peak,upper97p5__w0peak,  color= "red" ,ls='--', alpha = 0.25, label = "75 and 95 PI")
-    ax.fill_between(times, lower25__w0peak,upper75__w0peak,  color= "red" ,ls='--', alpha = 0.25)
+    ax.fill_between(times, lower_2p5,upper97p5,  color= "red" ,ls='--', alpha = 0.25, label = "75 and 95 PI")
+    ax.fill_between(times, lower25,upper75,  color= "red" ,ls='--', alpha = 0.25)
 
     ax.set_ylim(0,2500)
     ax.set_xlim(0,200)
