@@ -22,6 +22,8 @@ import jax
 from jax import random
 import jax.numpy as jnp
 
+import pickle
+
 def generate_data( N = 12*10**6        #--population size 
                   ,I0 = 5./(12*10**6)  #--initial proportion of infectors
                   ,E0 = 5./(12*10**6)  #--initial proportion of exposed
@@ -101,16 +103,15 @@ def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, p
         
         times = jnp.arange(0,total_window_of_observation)
         
-        sigma = numpyro.sample("sigma", dist.Gamma( 1/2., 1. ) )
+        sigma = numpyro.sample("sigma", dist.Beta( 1/2., (1-(1./2)) ) )
 
         gamma = 1./1  #--presets
         kappa = 1./7  #--presets
 
-        phi = numpyro.sample("phi", dist.Beta(0.025*10, (1-0.025)*10))
+        phi = numpyro.sample("phi", dist.Beta(0.025*500, (1-0.025)*500))
         r0  = numpyro.sample("R0" , dist.Uniform(0.75,4))
 
         beta = r0*gamma*(1./ps)
-
 
         def evolve(carry,array, params):
             s,e,i,h,r,c = carry
@@ -146,7 +147,8 @@ def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, p
         states = numpyro.deterministic("states",states)
 
         inc_hosp_proportion = states[:,-1]
-
+        inc_hosp_proportion = jnp.clip(inc_hosp_proportion,a_min=0,a_max= ps)
+        
         inc_hosps = (inc_hosp_proportion*ttl).reshape(-1,)
         inc_hosps = numpyro.deterministic("inc_hosps",inc_hosps)
 
@@ -171,7 +173,7 @@ def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, p
                 N = hj_peaks_and_intensities.shape[0]
 
                 # Vector of variances for each of the d variables
-                theta = numpyro.sample("theta", dist.HalfCauchy(jnp.ones(d)))
+                theta = numpyro.sample("theta", dist.HalfCauchy(1*jnp.ones(d)))
 
                 concentration = jnp.ones(1)  # Implies a uniform distribution over correlation matrices
                 corr_mat = numpyro.sample("corr_mat", dist.LKJ(d, concentration))
@@ -184,15 +186,14 @@ def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, p
                 mu = jnp.array([peak_time, peak_value]).reshape(2,)
 
                 with numpyro.plate("observations", N):
-                    obs = numpyro.sample("obs", dist.MultivariateNormal(mu, covariance_matrix=cov_mat), obs=hj_peaks_and_intensities)
+                    obs = numpyro.sample("obs", dist.MultivariateStudentT(loc=mu, scale_tril=cov_mat, df=1), obs=hj_peaks_and_intensities)
                     
             elif peak_times_only:
                 s = numpyro.sample("s", dist.HalfCauchy(100*jnp.ones(1,)))
-                ll_peak_times = numpyro.sample("ll_peak_times", dist.Normal( peak_time, s ), obs = hj_peaks_and_intensities[:,0] )
+                ll_peak_times = numpyro.sample("ll_peak_times", dist.Normal( peak_time, s ), obs = hj_peaks_and_intensities[:,0].reshape(-1,) )
             elif peak_values_only:
-                s = numpyro.sample("s", dist.HalfCauchy(100*jnp.ones(1,)))
-                ll_peak_values = numpyro.sample("ll_peak", dist.Normal( peak_value, s ), obs = hj_peaks_and_intensities[:,-1] )
-
+                ll_peak_values = numpyro.sample("ll_peak", dist.NegativeBinomial2( peak_value, 0.3 ), obs = hj_peaks_and_intensities[:,-1].reshape(-1,) )
+                
     nuts_kernel = NUTS(model)
     mcmc        = MCMC( nuts_kernel , num_warmup=3000, num_samples=2000,progress_bar=True)
 
@@ -204,7 +205,16 @@ def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, p
     mcmc.print_summary()
     samples = mcmc.get_samples()
 
-    return samples
+    #--check for any trajetories that are nan and remove them
+    non_nan_trajectories = np.where( np.isnan(samples["inc_hosps"]).sum(1)==0)[0]
+
+    if len(non_nan_trajectories)==0:
+        return samples
+    
+    stripped_samples = {}
+    for k,v in samples.items():
+        stripped_samples[k] = v[non_nan_trajectories]
+    return stripped_samples
 
 def generate_multiple_noisy_measurements_of_peak_and_location(time_at_peak,inc_hosps, noisy_hosps, noise, rng_key, num_of_measurements, pct_training_data):
     train_N       = int(time_at_peak*pct_training_data)
@@ -213,7 +223,7 @@ def generate_multiple_noisy_measurements_of_peak_and_location(time_at_peak,inc_h
     noisy_peaks = np.asarray(dist.NegativeBinomial2( peak_value, noise ).sample(rng_key, sample_shape = (num_of_measurements,)  ))
 
     #--uniform distribution of time at peak
-    noisy_time_at_peaks = time_at_peak + np.random.randint(low = -14, high=14, size = (num_of_measurements,))
+    noisy_time_at_peaks = time_at_peak + np.random.randint(low = -28, high=28, size = (num_of_measurements,))
 
     return noisy_hosps[:train_N], noisy_peaks, noisy_time_at_peaks
     
@@ -224,172 +234,113 @@ def stamp(ax,s):
     ax.text(0.0125,0.975,s=s,fontweight="bold",fontsize=10,ha="left",va="top",transform=ax.transAxes)
 
 if __name__ == "__main__":
-    rng_key     = random.PRNGKey(0)    #--seed for random number generation
     N     = 12*10**6                   #--Population of the state of PA
+    rng_key     = random.PRNGKey(0)    #--seed for random number generation
     ps    = 0.12                       #--Percent of the population that is considered to be susceptible
     total_window_of_observation = 210  #--total number of time units that we will observe
     
     
     #--generate simulated data
     inc_hosps, noisy_hosps, time_at_peak = generate_data(rng_key=rng_key, sigma = 1./2, gamma = 1./1,  noise = 100, T = total_window_of_observation)
+
+    truthdata = pd.DataFrame({"times": np.arange(1,total_window_of_observation), "hosps":inc_hosps, "noisy_hosps":noisy_hosps})
+    truthdata["time_at_peak"] = time_at_peak
+    truthdata["peakvalue"]    = inc_hosps[time_at_peak]
+
+    truthdata.to_csv("./fig_predictions_toprow_and_densitiesbottomrow/truth.csv",index=False)
+
+
+    
     training_data, noisy_peak_value, truth_data = collect_training_data(inc_hosps,noisy_hosps
                                                             ,time_at_peak
                                                             ,0.50
-                                                            ,plus_peak=True)
+                                                            ,plus_peak=False)
 
-    # #--prior information only
-    # samples = SEIRH_Forecast(rng_key = rng_key
-    #                          , training_data = None
-    #                          , N  = N
-    #                          , ps = ps
-    #                          , total_window_of_observation = total_window_of_observation
-    #                          , hj_peaks_and_intensities = None)
+    #--prior information only
+    samples = SEIRH_Forecast(rng_key = rng_key
+                             , training_data = None
+                             , N  = N
+                             , ps = ps
+                             , total_window_of_observation = total_window_of_observation
+                             , peak_time_and_values = False
+                             , peak_values_only = False
+                             , peak_times_only = False
+                             , hj_peaks_and_intensities = None)
+
     
+    peaks = samples["peak_time_and_value"][:,1]
+    times = samples["peak_time_and_value"][:,0]
 
+    peaks_and_times = pd.DataFrame({"peaks":peaks,"times":times})
+    peaks_and_times.to_csv("./fig_predictions_toprow_and_densitiesbottomrow/prior__only__peaks_and_times.csv",index=False)
 
-    # #--include surveillance data
-    # samples_with_surv_data = SEIRH_Forecast(rng_key = rng_key
-    #                          , training_data = training_data
-    #                          , N  = N
-    #                          , ps = ps
-    #                          , total_window_of_observation = total_window_of_observation
-    #                          , hj_peaks_and_intensities = None)
+    predicted_inc_hosps= np.median(samples["inc_hosps"], 0)
+    lower_2p5,lower25, upper75, upper97p5 = np.percentile( samples["inc_hosps"], [2.5, 25, 75, 97.5], 0)
 
-    # peaks = samples_with_surv_data["peak_time_and_value"][:,1]
-    # times = samples_with_surv_data["peak_time_and_value"][:,0]
-    # d = pd.DataFrame({"p":p,"t":t})
+    quantiles = pd.DataFrame({"t":np.arange(0, len(predicted_inc_hosps)), "median":predicted_inc_hosps, "lower2p5":lower_2p5, "lower25": lower25, "upper75":upper75, "upper97p5":upper97p5 })
+    quantiles.to_csv("./fig_predictions_toprow_and_densitiesbottomrow/prior__only__quantiles.csv", index=False)
+    
+    pickle.dump( samples, open("prior__samples.pkl", "wb"))
 
-    # sns.jointplot(x="t",y="p",data=d, kind="kde", fill=True, space=0)
-    # plt.axhline(inc_hosps[time_at_peak])
-    # plt.axvline(time_at_peak)
-
-    # plt.show()
-
+    
     #--include surveillance data
+    samples = SEIRH_Forecast(rng_key = rng_key
+                             , training_data = training_data
+                             , N  = N
+                             , ps = ps
+                             , total_window_of_observation = total_window_of_observation
+                             , peak_time_and_values = False
+                             , peak_values_only = False
+                             , peak_times_only = False
+                             , hj_peaks_and_intensities = None)
+    peaks = samples["peak_time_and_value"][:,1]
+    times = samples["peak_time_and_value"][:,0]
+
+    peaks_and_times = pd.DataFrame({"peaks":peaks,"times":times})
+    peaks_and_times.to_csv("./fig_predictions_toprow_and_densitiesbottomrow/survdata__peaks_and_times.csv",index=False)
+
+    predicted_inc_hosps= np.median(samples["inc_hosps"], 0)
+    lower_2p5,lower25, upper75, upper97p5 = np.percentile( samples["inc_hosps"], [2.5, 25, 75, 97.5], 0)
+
+    quantiles = pd.DataFrame({"t":np.arange(0, len(predicted_inc_hosps)), "median":predicted_inc_hosps, "lower2p5":lower_2p5, "lower25": lower25, "upper75":upper75, "upper97p5":upper97p5 })
+    quantiles.to_csv("./fig_predictions_toprow_and_densitiesbottomrow/survdata__quantiles.csv",index=False)
+    
+    pickle.dump( samples, open("survdata__samples.pkl", "wb"))
+    
+    #--include hj data
     training_data, noisy_peaks, noisy_time_at_peaks = generate_multiple_noisy_measurements_of_peak_and_location(time_at_peak
                                                                                                                 , inc_hosps
                                                                                                                 , noisy_hosps
-                                                                                                                , noise = 50
+                                                                                                                , noise = 100
                                                                                                                 , rng_key = rng_key
-                                                                                                                , num_of_measurements = 10
-                                                                                                                , pct_training_data=0.80)                                
-    
+                                                                                                                , num_of_measurements = 50
+                                                                                                                , pct_training_data=0.50)                                
     hj_peaks_and_intensities = np.vstack([noisy_time_at_peaks, noisy_peaks]).T
-    samples_with_surv_and_hj_data = SEIRH_Forecast(rng_key = rng_key
-                                                   , training_data = training_data
-                                                   , N  = N
-                                                   , ps = ps
-                                                   , total_window_of_observation = total_window_of_observation
-                                                   , peak_time_and_values = True
-                                                   , peak_values_only = False
-                                                   , peak_times_only = False
-                                                   , hj_peaks_and_intensities    = hj_peaks_and_intensities)
+    hj_peaks_and_intensities = hj_peaks_and_intensities.astype(float)
 
-    peaks = samples_with_surv_and_hj_data["peak_time_and_value"][:,1]
-    times = samples_with_surv_and_hj_data["peak_time_and_value"][:,0]
-    d = pd.DataFrame({"p":peaks,"t":times})
-
-    sns.jointplot(x="t",y="p",data=d, kind="kde", fill=True, space=0)
-    plt.axhline(inc_hosps[time_at_peak])
-    plt.axvline(time_at_peak)
-
-    plt.scatter(noisy_time_at_peaks, noisy_peaks, color="black",s=3 )
-
-    plt.show()
+    hjout = pd.DataFrame({ "time": hj_peaks_and_intensities[:,0], "peak":hj_peaks_and_intensities[:,1]})
+    hjout.to_csv("./fig_predictions_toprow_and_densitiesbottomrow/hj_peaks_and_intensities.csv",index=False)
     
+    samples = SEIRH_Forecast(rng_key = rng_key
+                             , training_data = training_data
+                             , N  = N
+                             , ps = ps
+                             , total_window_of_observation = total_window_of_observation
+                             , peak_time_and_values = True
+                             , peak_values_only     = False
+                             , peak_times_only      = False
+                             , hj_peaks_and_intensities    = hj_peaks_and_intensities)
 
-    #--forecast with peak data included
-    predicted_inc_hosps__whjdata= samples_with_surv_and_hj_data["inc_hosps"].mean(0)
-    lower_2p5,lower25, upper75, upper97p5 = np.percentile( samples_with_surv_and_hj_data["inc_hosps"], [2.5, 25, 75, 97.5], 0)
+    peaks = samples["peak_time_and_value"][:,1]
+    times = samples["peak_time_and_value"][:,0]
 
-    #-plot
-    plt.style.use('science')
+    peaks_and_times = pd.DataFrame({"peaks":peaks,"times":times})
+    peaks_and_times.to_csv("./fig_predictions_toprow_and_densitiesbottomrow/hjdata__peaks_and_times.csv",index=False)
+
+    predicted_inc_hosps= np.median(samples["inc_hosps"], 0)
+    lower_2p5,lower25, upper75, upper97p5 = np.percentile( samples["inc_hosps"], [2.5, 25, 75, 97.5], 0)
+
+    quantiles = pd.DataFrame({"t":np.arange(0, len(predicted_inc_hosps)), "median":predicted_inc_hosps, "lower2p5":lower_2p5, "lower25": lower25, "upper75":upper75, "upper97p5":upper97p5 })
+    quantiles.to_csv("./fig_predictions_toprow_and_densitiesbottomrow/hjdata__quantiles.csv",index=False)
     
-    fig,axs = plt.subplots(2,2)
-    times = np.arange(0,total_window_of_observation)
-    
-    #--plot truth on all graphs
-    for ax in axs.flatten():
-        ax.plot(times[1:], inc_hosps, color="black", label = "Truth")
-
-    ax = axs[0,0]
-    
-    #--plot without peak
-    ax.plot(predicted_inc_hosps__whjdata, color= "red", ls='--', label = "Mean prediction")
-    ax.scatter(times[:len(training_data)], training_data, lw=1, color="blue", alpha=1,s=3, label = "Surveillance data (up to day 16) ")
-    
-    ax.fill_between(times, lower_2p5,upper97p5,  color= "red" ,ls='--', alpha = 0.25, label = "75 and 95 PI")
-    ax.fill_between(times, lower25,upper75,  color= "red" ,ls='--', alpha = 0.25)
-
-    ax.set_ylim(0,2500)
-    ax.set_xlim(0,200)
-    ax.set_ylabel("Incident hospitlizations", fontsize=10)
-
-    stamp(ax,"A.")
-
-    ax.legend(fontsize=10,frameon=False)
-    
-    #--plot with single noisy measurement of intensity
-    ax = axs[0,1]
-
-    train_N = len(training_data)
-
-    #--plot simulated data    
-    ax.scatter(times[:train_N], training_data, lw=1, color="blue", alpha=1,s=3, label = "Surveillance data (up to day 16) ")
-    ax.scatter(times[time_at_peak], noisy_peak_value, lw=1, color="blue", alpha=1,s=3)
-    
-    ax.plot(times, predicted_inc_hosps__wpeak        , color= "purple" ,ls='--')
-    ax.fill_between(times, lower_2p5__wpeak,upper97p5__wpeak,  color= "purple" ,ls='--', alpha = 0.25)
-    ax.fill_between(times, lower25__wpeak,upper75__wpeak,  color= "purple" ,ls='--', alpha = 0.25)
-
-    ax.set_ylim(0,2500)
-    ax.set_xlim(0,200)
-
-    stamp(ax,"B.")
-
-    ax = axs[1,0]
-    
-    #--plot with multi measurements of peak
-    #--plot simulated data       
-
-    ax.scatter(times[:train_N], training_data, lw=1, color="blue", alpha=1,s=3)
-    for pt,p in zip(hj_peak_times, noisy_peaks):
-        ax.scatter(pt, p, lw=1, color="blue", alpha=1,s=3)
-    
-    ax.plot(times, mean_prediction, color= "blue", ls='--')
-    ax.fill_between(times, lower_2p5__ensemble,upper97p5__ensemble,  color= "blue" ,ls='--', alpha = 0.25)
-    ax.fill_between(times, lower25__ensemble,upper75__ensemble,  color= "blue" ,ls='--', alpha = 0.25)
-
-    ax.set_ylim(0,2500)
-    ax.set_xlim(0,200)
-
-    ax.set_ylabel("Incident hospitlizations", fontsize=10)
-    ax.set_xlabel("Time (days)", fontsize=10)
-
-    stamp(ax,"C.")
-    
-    ax = axs[1,1]
-    
-    #--plot with multi measurements of peak
-    #--plot simulated data       
-
-    ax.scatter(times[:train_N], training_data, lw=1, color="blue", alpha=1,s=3)
-    for pt,p in zip(noisy_time_at_peaks, noisy_peaks):
-        ax.scatter(pt, p, lw=1, color="blue", alpha=1,s=3)
-    
-    ax.plot(times, mean_prediction_peak_and_value, color= "orange", ls='--')
-    ax.fill_between(times, lower_2p5__ensemble_pv,upper97p5__ensemble_pv,  color= "orange" ,ls='--', alpha = 0.25)
-    ax.fill_between(times, lower25__ensemble_pv,upper75__ensemble_pv,  color= "orange" ,ls='--', alpha = 0.25)
-
-    ax.set_ylim(0,2500)
-    ax.set_xlim(0,200)
-    ax.set_xlabel("Time (days)", fontsize=10)
-
-    stamp(ax,"D.")
-    
-    fig.set_tight_layout(True)
-
-    w = mm2inch(183)
-    fig.set_size_inches( w, w/1.5 )
-
-    plt.show()
+    pickle.dump( samples, open("hjdata__samples.pkl", "wb"))
