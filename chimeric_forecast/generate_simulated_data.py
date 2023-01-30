@@ -35,6 +35,8 @@ class generate_data(object):
         import jax
         import jax.numpy as jnp
 
+        import numpy as np
+        
         import numpyro
         import numpyro.distributions as dist
  
