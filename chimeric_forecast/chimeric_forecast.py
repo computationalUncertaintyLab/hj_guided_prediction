@@ -173,6 +173,14 @@ class chimeric_forecast(object):
         self.posterior_samples = stripped_samples
         return stripped_samples
 
+    def compute_quantiles(self,qs = [0.025, 0.25, 0.50, 0.75, 0.975],attribute = "inc_hosps"):
+        import numpy as np
+        quants = np.percentile( self.posterior_samples["{:s}".format(attribute)], qs, 0).T
+        
+        #--attach and return computed quantiles
+        self.quants = quants
+        return quants
+
 if __name__ == "__main__":
     #--set randomization key
     from jax import random
@@ -193,3 +201,6 @@ if __name__ == "__main__":
     #--fit model
     forecast = chimeric_forecast(rng_key = rng_key, surveillance_data = noisy_hosps, humanjudgment_data = noisy_human_predictions, peak_time_and_values=True )
     forecast.fit_model()
+
+    #--compute quantiles for incident hospitalizations
+    quantiles_for_incident_hosps = forecast.compute_quantiles()
