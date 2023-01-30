@@ -108,8 +108,10 @@ def SEIRH_Forecast(rng_key, training_data, N, ps, total_window_of_observation, p
         gamma = 1./1  #--presets
         kappa = 1./7  #--presets
 
-        phi = numpyro.sample("phi", dist.Beta(0.025*500, (1-0.025)*500))
+        phi = numpyro.sample("phi", dist.Beta(0.025*5, (1-0.025)*5))
         r0  = numpyro.sample("R0" , dist.Uniform(0.75,4))
+
+        ps = numpyro.sample("ps", dist.Beta( 0.10*5, (1-0.10)*5 ) )
 
         beta = r0*gamma*(1./ps)
 
@@ -311,7 +313,7 @@ if __name__ == "__main__":
     training_data, noisy_peaks, noisy_time_at_peaks = generate_multiple_noisy_measurements_of_peak_and_location(time_at_peak
                                                                                                                 , inc_hosps
                                                                                                                 , noisy_hosps
-                                                                                                                , noise = 100
+                                                                                                                , noise = 10
                                                                                                                 , rng_key = rng_key
                                                                                                                 , num_of_measurements = 50
                                                                                                                 , pct_training_data=0.50)                                
