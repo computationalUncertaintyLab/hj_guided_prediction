@@ -37,11 +37,14 @@ if __name__ == "__main__":
     hj_preds.to_csv("./hj_preds.csv", index=False)
 
     #--bootstrap 30**2 times
-    np.random.shuffle(data)
+    BOOTSTRAPSIZE = 50
     
-
-    
-
+    all_bootstraps = pd.DataFrame()
+    for _ in range(30**2):
+        d = hj_preds.sample(BOOTSTRAPSIZE) #--shuffle rows
+        d["bootstrap_sample"] = _ #--add in a boostrap sample number
+        
+        all_bootstraps = pd.concat([all_bootstraps, d]) #--append sample to dataframe
     
     #--save truth data for records
     truthdata = pd.DataFrame({"times": np.arange(0,surv_data.total_window_of_observation), "hosps":inc_hosps, "noisy_hosps":noisy_hosps})
