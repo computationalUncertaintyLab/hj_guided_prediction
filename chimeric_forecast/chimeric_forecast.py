@@ -118,7 +118,7 @@ class chimeric_forecast(object):
                 d = self.humanjudgment_data.shape[1] #--Number of dimensions or the number of aspects of the trajectory of inc hosps (2)
                 N = self.humanjudgment_data.shape[0] #--Number of predictions collected from the crowd of humans
 
-                theta = numpyro.sample("theta", dist.HalfCauchy(1*jnp.ones(d)))   #--Vector of variances for each of the d variables
+                theta = numpyro.sample("theta", dist.HalfCauchy((100**2)*jnp.ones(d)))   #--Vector of variances for each of the d variables
 
                 concentration = jnp.ones(1)                                       #--A uniform distribution over correlation matrices
                 corr_mat = numpyro.sample("corr_mat", dist.LKJ(d, concentration))
@@ -173,13 +173,20 @@ class chimeric_forecast(object):
         self.posterior_samples = stripped_samples
         return stripped_samples
 
-    def compute_quantiles(self,qs = [0.025, 0.25, 0.50, 0.75, 0.975],attribute = "inc_hosps"):
+    def compute_quantiles(self,qs = [2.5, 25.0, 50., 75., 97.5],attribute = "inc_hosps"):
         import numpy as np
+        import pandas as pd
         quants = np.percentile( self.posterior_samples["{:s}".format(attribute)], qs, 0).T
-        
+
+        quants_df = {}
+        for n,q in enumerate(qs):
+            quants_df["{:4.3f}".format(q)] = quants[:,n]
+        quants_df = pd.DataFrame(quants_df)
+            
         #--attach and return computed quantiles
-        self.quants = quants
-        return quants
+        self.quants    = quants
+        self.quants_df = quants_df
+        return quants_df
 
 if __name__ == "__main__":
     #--set randomization key

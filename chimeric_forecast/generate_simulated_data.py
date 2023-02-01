@@ -9,8 +9,8 @@ class generate_data(object):
                   ,total_window_of_observation  = 210                 #--total number of time steps to observe outbreak
                   ,ps                           = 0.10                #--proportion of susceptible in the population
                   ,sigma                        = 1./2                #--Duration of latent period
-                  ,r0                           = 1.4                 #--Reproduction number 
-                  ,gamma                        = 1/.2                #--Duration of infectious period
+                  ,r0                           = 1.75                 #--Reproduction number 
+                  ,gamma                        = 1/3.                #--Duration of infectious period
                   ,kappa                        = 1./7                #--Duration of hospitalization period
                   ,ph                           = 0.025               #--Proportion of those who move from infected to hospitalized
                   ,noise                        = 5.95                #--Variance (noise) to add to the true number of incident hospitalizations
@@ -82,6 +82,9 @@ class generate_data(object):
         #--extract cumulative proportion of hospitalizations over time
         cum_hosps     = states[:,-1]
 
+        #--append the initial cumualtive proportion
+        cum_hosps = np.append(H0,cum_hosps)
+
         #--compute number of incident hospitalizations
         inc_hosps     = np.clip(np.diff(cum_hosps)*self.population, 0, np.inf)
 
@@ -101,6 +104,11 @@ class generate_data(object):
         self.peak_value   = peak_value
         
         return inc_hosps, noisy_hosps, time_at_peak, peak_value
+
+    def cut_data_based_on_week(self, week):
+        keep_up_until_this_day = self.time_at_peak - 7*week
+        keep_up_until_this_day = max(0,keep_up_until_this_day)
+        return self.inc_hosps[:keep_up_until_this_day], self.noisy_hosps[:keep_up_until_this_day], keep_up_until_this_day
 
 if __name__ == "__main__":
 
