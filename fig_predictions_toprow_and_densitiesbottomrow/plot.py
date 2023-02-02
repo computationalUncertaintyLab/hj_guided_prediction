@@ -107,7 +107,7 @@ if __name__ == "__main__":
         ax.set_xlim(0,210)
 
         if n<2:
-            ax.set_ylim(0,2500)
+            ax.set_ylim(400,700)
         else:
             ax.set_ylim(400,700)
 
