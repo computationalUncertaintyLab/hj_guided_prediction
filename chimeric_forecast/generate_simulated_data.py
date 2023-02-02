@@ -6,7 +6,7 @@ class generate_data(object):
                   ,I0:         float                        = 5./(12*10**6)       #--initial proportion of infectors
                   ,E0:         float                        = 5./(12*10**6)       #--initial proportion of exposed
                   ,H0:         float                        = 0                   #--initial proportion of hospitalized
-                  ,total_window_of_observationL int         = 210                 #--total number of time steps to observe outbreak
+                  ,total_window_of_observation: int         = 210                 #--total number of time steps to observe outbreak
                   ,ps:         float                        = 0.10                #--proportion of susceptible in the population
                   ,sigma:      float                        = 1./2                #--Duration of latent period
                   ,r0:         float                        = 1.75                #--Reproduction number 
@@ -127,7 +127,9 @@ class generate_data(object):
         return self.inc_hosps[:keep_up_until_this_day], self.noisy_hosps[:keep_up_until_this_day], keep_up_until_this_day
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt #--only needed for plot
 
+    
     from jax import random
     rng_key = random.PRNGKey(0)
 
