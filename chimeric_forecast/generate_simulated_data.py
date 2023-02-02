@@ -2,21 +2,37 @@
 
 class generate_data(object):
     def __init__( self
-                  ,population                   = 12*10**6            #--population size 
-                  ,I0                           = 5./(12*10**6)       #--initial proportion of infectors
-                  ,E0                           = 5./(12*10**6)       #--initial proportion of exposed
-                  ,H0                           = 0                   #--initial proportion of hospitalized
-                  ,total_window_of_observation  = 210                 #--total number of time steps to observe outbreak
-                  ,ps                           = 0.10                #--proportion of susceptible in the population
-                  ,sigma                        = 1./2                #--Duration of latent period
-                  ,r0                           = 1.75                 #--Reproduction number 
-                  ,gamma                        = 1/3.                #--Duration of infectious period
-                  ,kappa                        = 1./7                #--Duration of hospitalization period
-                  ,ph                           = 0.025               #--Proportion of those who move from infected to hospitalized
-                  ,noise                        = 5.95                #--Variance (noise) to add to the true number of incident hospitalizations
-                  ,rng_key                      = None                #--Key for randomization
+                  ,population: int                          = 12*10**6            #--population size 
+                  ,I0:         float                        = 5./(12*10**6)       #--initial proportion of infectors
+                  ,E0:         float                        = 5./(12*10**6)       #--initial proportion of exposed
+                  ,H0:         float                        = 0                   #--initial proportion of hospitalized
+                  ,total_window_of_observationL int         = 210                 #--total number of time steps to observe outbreak
+                  ,ps:         float                        = 0.10                #--proportion of susceptible in the population
+                  ,sigma:      float                        = 1./2                #--Duration of latent period
+                  ,r0:         float                        = 1.75                #--Reproduction number 
+                  ,gamma:      float                        = 1/3.                #--Duration of infectious period
+                  ,kappa:      float                        = 1./7                #--Duration of hospitalization period
+                  ,ph:         float                        = 0.025               #--Proportion of those who move from infected to hospitalized
+                  ,noise:      float                        = 5.95                #--Variance (noise) to add to the true number of incident hospitalizations
+                  ,rng_key                                  = None                #--Key for randomization
                  ):
+        """
+        population (int):  population size , default 12*10**6           
+        I0         (float): initial proportion of infectors, default 5./(12*10**6)
+        E0         (float): initial proportion of exposed, default 5./(12*10**6)
+        H0         (float): initial proportion of hospitalized, default 0                   
+        total_window_of_observation (int): total number of time steps to observe outbreak , default 210                 
+        ps         (float): proportion of susceptible in the population, default 0.10                
+        sigma      (float): Duration of latent period, default 1./2                
+        r0         (float): Reproduction number , default 1.75                
+        gamma      (float): Duration of infectious period, default 1/3.                
+        kappa      (float): Duration of hospitalization period, default 1./7                
+        ph         (float): Proportion of those who move from infected to hospitalized, default 0.025               
+        noise      (float): Variance (noise) to add to the true number of incident hospitalizations, default 5.95
+        rng_key    (PRNG key from Jax) , default None      
+        """
 
+        #--attached arguments to object
         self.population = population
         self.I0         = I0
         self.E0         = E0
@@ -120,4 +136,3 @@ if __name__ == "__main__":
 
     plt.plot(inc_hosps)
     plt.show()
-    
