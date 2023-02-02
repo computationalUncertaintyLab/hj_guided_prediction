@@ -1,2 +1,2 @@
 # hj_guided_prediction
-![Chimeric_SEIRH_model](model_pic.png)
+<img src="model_pic.png" width="640" height="400">
