@@ -23,6 +23,20 @@ if __name__ == "__main__":
     surv_data = generate_data(rng_key = rng_key)
     inc_hosps, noisy_hosps, time_at_peak, peak_value = surv_data.simulate_surveillance_data()
 
+    #--generate two past seasons
+    past0_surv_data = generate_data(rng_key = random.PRNGKey(20120905), r0 = 1.75 + (np.random.random()-0.5) )
+    past0_inc_hosps, past0_noisy_hosps, past0_time_at_peak, past0_peak_value = past0_surv_data.simulate_surveillance_data()
+    
+    past1_surv_data = generate_data(rng_key = random.PRNGKey(20160507), r0 = 1.75 + (np.random.random()-0.5) )
+    past1_inc_hosps, past1_noisy_hosps, past1_time_at_peak, past1_peak_value = past1_surv_data.simulate_surveillance_data()
+
+    #--format past true peak data
+    s0 = pd.DataFrame({"true_time_at_peak": [past0_time_at_peak], "true_peak_value": [past0_peak_value]})
+    s1 = pd.DataFrame({"true_time_at_peak": [past1_time_at_peak], "true_peak_value": [past1_peak_value]})
+
+    past_season_peak_data = pd.concat([s0,s1])
+    past_season_peak_data.to_csv("./past_season_peak_data.csv",index=False)
+
     #--generate simulated human judgment predictins
     hj_data  = generate_humanjudgment_prediction_data(true_incident_hospitalizations = inc_hosps, time_at_peak = time_at_peak, rng_key  = rng_key ) 
     noisy_time_at_peaks, noisy_peak_values, noisy_human_predictions = hj_data.generate_predictions()
@@ -51,8 +65,8 @@ if __name__ == "__main__":
     noisy_truthdata.to_csv("./noisy_truth.csv",index=False)
 
     #--three models to run: just prior, surv data only, chimeric
-    filenames = ["prior", "survdata", "surv_plus_hj"]
-    options   = [(None, None, None), (cut_noisy_hosps, None, None), (cut_noisy_hosps, noisy_human_predictions, True)]
+    filenames = ["prior", "survdata", "surv_plus_hj","surv_plus_past_season"]
+    options   = [(None, None, None), (cut_noisy_hosps, None, None),(cut_noisy_hosps, noisy_human_predictions, True), (cut_noisy_hosps, past_season_peak_data.asnumpy(), True)]
     
     for f,o  in zip(filenames,options) :
         d, h, o = o #--these are the options that control what information gets to the model

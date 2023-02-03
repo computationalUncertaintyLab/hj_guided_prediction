@@ -18,7 +18,7 @@ if __name__ == "__main__":
     #-plot
     plt.style.use('science')
     
-    fig,axs = plt.subplots(2,3)
+    fig,axs = plt.subplots(2,4)
     
     truth = pd.read_csv("./truth.csv")
     inc_hosps = truth.hosps
@@ -34,13 +34,14 @@ if __name__ == "__main__":
     peak_value   = truth.peakvalue.max()
     
     #--prior
-    prior  = pd.read_csv("./prior__quantiles.csv")
-    surv   = pd.read_csv("./survdata__quantiles.csv")
-    hj     = pd.read_csv("./surv_plus_hj__quantiles.csv")
+    prior       = pd.read_csv("./prior__quantiles.csv")
+    surv        = pd.read_csv("./survdata__quantiles.csv")
+    hj          = pd.read_csv("./surv_plus_hj__quantiles.csv")
+    past_season = pd.read_csv("./surv_plus_past_season__quantiles.csv")
 
-    colors = ["red", "blue", "purple"]
-    stamps = ["A.","B.","C."]
-    for n,quants in enumerate([ prior, surv, hj ]):
+    colors = ["red", "blue", "orange", "purple"]
+    stamps = ["A.","B.","C.","D."]
+    for n,quants in enumerate([ prior, surv, past_season, hj ]):
         median_prediction = quants["50.000"]
         lower2p5          = quants["2.500"]
         lower25           = quants["25.000"]
@@ -61,7 +62,7 @@ if __name__ == "__main__":
         
         #--plot the median, 50PI, and 95PI
         ax.plot(total_time, median_prediction           , color = colors[n], lw=1)
-        ax.fill_between(total_time, lower2p5, upper97p5 , color = colors[n], lw=0 ,alpha=0.25, label="50 and 95 PI")
+        ax.fill_between(total_time, lower2p5, upper97p5 , color = colors[n], lw=0 ,alpha=0.25, label="50\nand\n95 PI")
         ax.fill_between(total_time, lower25 , upper75   , color = colors[n], lw=0 ,alpha=0.25)
 
         #--set xlim and xticks in intervals of weeks
@@ -85,14 +86,17 @@ if __name__ == "__main__":
             ax.legend(fontsize=10,frameon=False, handletextpad= 0.0)
 
     #--peaks
-    prior  = pd.read_csv("./prior__peaks_and_times.csv")
-    surv   = pd.read_csv("./survdata__peaks_and_times.csv")
-    hj     = pd.read_csv("./surv_plus_hj__peaks_and_times.csv")
+    prior          = pd.read_csv("./prior__peaks_and_times.csv")
+    surv           = pd.read_csv("./survdata__peaks_and_times.csv")
+    hj             = pd.read_csv("./surv_plus_hj__peaks_and_times.csv")
+    surv_plus_past = pd.read_csv("./surv_plus_past_season__peaks_and_times.csv")
+    
 
+    past_season_data_peaks        = pd.read_csv("./past_season_peak_data.csv")
     hjdata__peaks_and_times = pd.read_csv("./hj_preds.csv")
     
-    stamps = ["D.","E.","F."]
-    for n,peak_data in enumerate([ prior, surv, hj ]):
+    stamps = ["E.","F.","G.","H."]
+    for n,peak_data in enumerate([ prior, surv, surv_plus_past, hj ]):
         ax = axs[1,n]
         sns.kdeplot( x="times", y="peaks", data = peak_data,ax=ax, fill=True, clip = (0,np.inf), color = colors[n] )
 
@@ -100,26 +104,35 @@ if __name__ == "__main__":
         ax.axhline( peak_value, color ="black" )
 
         if n==2:
+            print(past_season_data_peaks)
+            ax.scatter( past_season_data_peaks.true_time_at_peak, past_season_data_peaks.true_peak_value, color="black", s=2, marker="s", label="Past two\nseasons"  )
+            ax.legend(frameon=False, handletextpad=-0.65, loc="upper right")
+
+
+        if n==3:
             ax.scatter( hjdata__peaks_and_times.noisy_time_at_peak, hjdata__peaks_and_times.noisy_peak_values, color="black", s=2, marker="s", label="Human\njudgment"  )
-            ax.legend(frameon=False, handletextpad=0.0)
+            ax.legend(frameon=False, handletextpad=-0.65)
 
         #--set the xlim and ylim of the plot
-        ax.set_xlim(0,210)
+        ax.set_xlim(0,215)
 
         if n<2:
-            ax.set_ylim(400,700)
+            ax.set_ylim(200,1100)
         else:
-            ax.set_ylim(400,700)
+            ax.set_ylim(200,1100)
 
         #--set the xticks and xlabel
         ax.set_xticks([7*x for x in np.arange(0,30,6)] + [210])
-        ax.set_xlabel("Day of peak hospitalizations", fontsize = 10)
+        ax.set_xlabel("Day of\npeak hospitalizations", fontsize = 10)
 
         #--set the ylabel 
         if n>0:
             ax.set_yticklabels([])
         if n==0:
             ax.set_ylabel("Peak hospitalizations", fontsize = 10)
+
+            ax.set_yticks([300,600,900,1100])
+            ax.set_yticklabels([300,600,900,1100])
         else:
             ax.set_ylabel("", fontsize = 10)
 
