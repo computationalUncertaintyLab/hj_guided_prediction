@@ -8,10 +8,10 @@ import json
 
 if __name__ == "__main__":
 
-    d = pd.read_csv("./Chimeric_forecasting_February 4, 2023_15.10.csv")
+    d = pd.read_csv("./Chimeric_forecasting_February 4, 2023_15.47.csv")
     first_row, second_row  = d.iloc[0], d.iloc[1]
 
-    d = pd.read_csv("./Chimeric_forecasting_February 4, 2023_15.10.csv", skiprows=2)
+    d = pd.read_csv("./Chimeric_forecasting_February 4, 2023_15.47.csv", skiprows=2)
     d.columns = first_row.index# [  json.loads(x)["ImportId"] for x in second_row.values]
 
     #--dictionary that maps questions to the treatments
