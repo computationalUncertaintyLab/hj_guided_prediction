@@ -61,7 +61,7 @@ if __name__ == "__main__":
                 
                 #--store these dataframes    
                 pd.DataFrame({"training_data":cut_noisy_hosps}).to_csv("./for_crowdsourcing/data_collection__{:d}__{:d}__{:.2f}/training_data__{:d}__{:d}__{:.2f}.csv".format(week, model_included, noise, week, model_included, noise))
-                pd.DataFrame({"truth_data":cut_inc_hosps}).to_csv("./for_crowdsourcing/data_collection__{:d}__{:d}__{:.2f}/truth_data__{:d}__{:d}__{:.2f}.csv".format(week, model_included, noise, week, model_included, noise))
+                pd.DataFrame({"truth_data":inc_hosps}).to_csv("./for_crowdsourcing/data_collection__{:d}__{:d}__{:.2f}/truth_data__{:d}__{:d}__{:.2f}.csv".format(week, model_included, noise, week, model_included, noise))
                 pd.DataFrame({"time_at_peak":[time_at_peak]}).to_csv("./for_crowdsourcing/data_collection__{:d}__{:d}__{:.2f}/time_at_peak__{:d}__{:d}__{:.2f}.csv".format(week, model_included, noise, week, model_included, noise))
 
                 if model_included:
@@ -72,6 +72,7 @@ if __name__ == "__main__":
                     #--compute quantiles for incident hospitalizations
                     quantiles_for_incident_hosps = forecast.compute_quantiles()
 
+                    quantiles_for_incident_hosps.to_csv("./for_crowdsourcing/data_collection__{:d}__{:d}__{:.2f}/quantiles__{:d}__{:d}__{:.2f}.csv".format(week, model_included, noise, week, model_included, noise))
 
                     lower25 = go.Scatter(  x=times
                                          , y=quantiles_for_incident_hosps["25.000"]
@@ -146,7 +147,7 @@ if __name__ == "__main__":
                 noisy_hosps_scatter__season0 = go.Scatter(x = times
                                                  ,y = past_season_0.training_data
                                                  ,mode='lines'
-                                                 ,line_color='grey'
+                                                 ,line_color='black'
                                                  ,name = 'Data from two seasons ago'
                                                  ,showlegend=True
                                                  ,hovertext = ["Day {:d}, {:d} Hosps".format(t,y) for (t,y) in zip(times[:cut_point], cut_noisy_hosps)]
