@@ -8,10 +8,10 @@ import json
 
 if __name__ == "__main__":
 
-    d = pd.read_csv("./Chimeric_forecasting_February 4, 2023_15.47.csv")
+    d = pd.read_csv("./Chimeric_forecasting_February 5, 2023_13.03.csv")
     first_row, second_row  = d.iloc[0], d.iloc[1]
 
-    d = pd.read_csv("./Chimeric_forecasting_February 4, 2023_15.47.csv", skiprows=2)
+    d = pd.read_csv("./Chimeric_forecasting_February 5, 2023_13.03.csv", skiprows=2)
     d.columns = first_row.index# [  json.loads(x)["ImportId"] for x in second_row.values]
 
     #--dictionary that maps questions to the treatments
@@ -56,6 +56,10 @@ if __name__ == "__main__":
                       , "factors__current_season":[], "factors__past_season":[], "factors__past_season2":[],"factors__model":[]
                       ,"survey_summary_from_participant":[]}
     for index, row in d.iterrows():
+
+        if 'No, I do not consent to participate in this study' == row.Q1:
+            continue
+        
         PID = row.Q2
         formatted_data["PID"].append(PID)
 
@@ -113,5 +117,8 @@ if __name__ == "__main__":
  
         formatted_data["survey_summary_from_participant"].append(row.Summary)
     formatted_data = pd.DataFrame(formatted_data)
+
+    #--remove prolific id and replace with random integer
+    formatted_data["PID"] = np.random.choice(2*len(formatted_data),size=len(formatted_data), replace=False)
 
     formatted_data.to_csv("./prolific_data.csv", index=False)
