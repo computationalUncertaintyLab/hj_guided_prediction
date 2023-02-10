@@ -7,17 +7,17 @@ import numpy as np
 import pandas as pd
 import pickle
 
-from chimeric_forecast import chimeric_forecast 
+from chimeric_forecast__weighted_ll import chimeric_forecast 
 from generate_simulated_data import generate_data
 from generate_humanjudgment_prediction_data import generate_humanjudgment_prediction_data 
 
 if __name__ == "__main__":
 
-    WEEK = 5 # how many weeks before the peak to cut the data 
+    WEEK = 4 # how many weeks before the peak to cut the data 
     
     #--set randomization key
     from jax import random
-    rng_key = random.PRNGKey(0)
+    rng_key = random.PRNGKey(20200311)
 
     #--generate simulated surveillance data
     surv_data = generate_data(rng_key = rng_key)
@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
     #--three models to run: just prior, surv data only, chimeric
     filenames = ["prior", "survdata", "surv_plus_hj","surv_plus_past_season"]
-    options   = [(None, None, None), (cut_noisy_hosps, None, None),(cut_noisy_hosps, noisy_human_predictions, True), (cut_noisy_hosps, past_season_peak_data.asnumpy(), True)]
+    options   = [(None, None, None), (cut_noisy_hosps, None, None),(cut_noisy_hosps, noisy_human_predictions, True), (cut_noisy_hosps, past_season_peak_data.to_numpy(), True)]
     
     for f,o  in zip(filenames,options) :
         d, h, o = o #--these are the options that control what information gets to the model
