@@ -1,4 +1,7 @@
 #mcandrew
+#This code generates the number of incident hospitalizations for 
+#two past simulated seasons by assuming that these two past 
+#seasons follow an SEIRH discrete time dynamical system with different R0 values.
 
 import sys
 import os
@@ -21,6 +24,7 @@ if __name__ == "__main__":
     total_window_of_observation = 210
     times = np.arange(1,210+1)
 
+    #--check to see if specific past is in the directory, if not create directory
     if os.path.isdir("./for_crowdsourcing/"):
         pass
     else:
