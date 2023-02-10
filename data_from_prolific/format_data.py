@@ -8,11 +8,13 @@ import json
 
 if __name__ == "__main__":
 
+    #--import raw data set that is not available for public consumption
     d = pd.read_csv("./Chimeric_forecasting_February 5, 2023_13.03.csv")
-    first_row, second_row  = d.iloc[0], d.iloc[1]
+    first_row, second_row  = d.iloc[0], d.iloc[1] #--extract the first two rows
 
+    #--import the dataset again, skipping the first two rows.
     d = pd.read_csv("./Chimeric_forecasting_February 5, 2023_13.03.csv", skiprows=2)
-    d.columns = first_row.index# [  json.loads(x)["ImportId"] for x in second_row.values]
+    d.columns = first_row.index
 
     #--dictionary that maps questions to the treatments
     from_question_2_treatments = {  "Q1": [-2, 10. ,1]
