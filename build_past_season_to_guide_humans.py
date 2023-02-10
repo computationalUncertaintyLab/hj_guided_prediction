@@ -26,6 +26,10 @@ if __name__ == "__main__":
     else:
         os.makedirs("./for_crowdsourcing/")
 
+    #--randomly geenrate R0 to be plus minus 0.5 of 1.75
+    #--This will be the same two curves for all treatements
+    sim_r0 = 1.75 + (np.random.random(size=(2,)) - 0.5)
+        
     for week in [6,5,4,3,2,1,0,-1,-2]:
         for noise in [0.25, 1.0,2.5, 5., 10.]:
             for model_included in [0,1]:
@@ -37,11 +41,7 @@ if __name__ == "__main__":
                         os.makedirs("./for_crowdsourcing/data_collection__{:d}__{:d}__{:.2f}/".format(week, model_included, noise))
 
                     #--generate simulated surveillance data
-
-                    #--randomly geenrate R0 to be plus minus 0.5 of 1.75
-                    sim_r0 = 1.75 + (np.random.random() - 0.5)
-                    
-                    surv_data = generate_data(rng_key = rng_keys[season], r0=sim_r0, noise = noise)
+                    surv_data = generate_data(rng_key = rng_keys[season], r0=sim_r0[season], noise = noise)
                     inc_hosps, noisy_hosps, time_at_peak, peak_value = surv_data.simulate_surveillance_data()
                 
                     #--store these dataframes
