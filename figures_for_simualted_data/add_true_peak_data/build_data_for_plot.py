@@ -43,7 +43,7 @@ if __name__ == "__main__":
         ax.plot(time_at_peak, peak_value, "ro")
 
         ax.fill_between(times, quantiles["2.500"], quantiles["97.500"],alpha=0.30, color = "red")
-        ax.title("surv only")
+        ax.set_title("surv only")
         
         #--compute percentile for peak time and peak intensity
         peak_samples = posterior_samples["peak_time_and_value"]
@@ -77,7 +77,7 @@ if __name__ == "__main__":
         ax.plot(time_at_peak, peak_value, "ro")
         
         ax.fill_between(times, quantiles["2.500"], quantiles["97.500"],alpha=0.30, color = "blue")
-        ax.title("time and intesntiy indpt")
+        ax.set_title("time and intesntiy indpt")
         #----------------------------------------------------------------------------------------------
 
         
@@ -103,7 +103,7 @@ if __name__ == "__main__":
         ax.plot(time_at_peak, peak_value, "ro")
  
         ax.fill_between(times, quantiles["2.500"], quantiles["97.500"],alpha=0.30, color = "blue")
-        ax.title("time only")
+        ax.set_title("time only")
         #----------------------------------------------------------------------------------------------
         
         #--compute percentile for peak time and peak intensity
@@ -139,7 +139,7 @@ if __name__ == "__main__":
         ax.plot(time_at_peak, peak_value, "ro")
  
         ax.fill_between(times, quantiles["2.500"], quantiles["97.500"],alpha=0.30, color = "blue")
-        ax.title("intensity only")
+        ax.set_title("intensity only")
         #----------------------------------------------------------------------------------------------
         
         #--compute percentile for peak time and peak intensity
