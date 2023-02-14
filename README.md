@@ -44,3 +44,4 @@ Kate Brown
 klb224@lehigh.edu
 
 ## Acknowledgements
+This work has been supported with funding from a subcontract on a cooperative agreement funded by the US Centers for Disease Control and Prevention (CDC) (1U01IP001122), with prime sponsor at UMass (PI Nick Reich), and by Cooperative Agreement number (NU38OT000297) from the CDC and the Council for State and Territorial Epidemiologists (CSTE). The content is solely the responsibility of the authors and does not necessarily represent the official views of CDC or CSTE.
