@@ -9,6 +9,14 @@ class chimeric_forecast(object):
                  , peak_times_only             = None
                  , peak_values_only            = None
                  , humanjudgment_data          = None
+                 , gamma_preset                = 1./1
+                 , kappa_preset                = 1/.7
+                 , sigma_preset                = None
+                 , phi_preset                  = None
+                 , ps_preset                   = None
+                 , E0_preset                   = None
+                 , I0_preset                   = None
+                 , surveillance_concentration  = None
                  ):
         self.surveillance_data           = surveillance_data
         self.population                  = population
@@ -17,6 +25,15 @@ class chimeric_forecast(object):
         self.peak_times_only             = peak_times_only
         self.peak_values_only            = peak_values_only
         self.humanjudgment_data          = humanjudgment_data
+        self.gamma_preset                = gamma_preset
+        self.kappa_preset                = kappa_preset
+        self.sigma_preset                = sigma_preset
+        self.phi_preset                  = phi_preset                  
+        self.ps_preset                   = ps_preset                   
+        self.E0_preset                   = E0_preset
+        self.I0_preset                   = I0_preset
+        self.surveillance_concentration  = surveillance_concentration
+        
         self.rng_key                     = rng_key
 
     def model_specificiation(self
@@ -36,17 +53,40 @@ class chimeric_forecast(object):
 
         #--priors 
         r0     = numpyro.sample("R0" , dist.Uniform(0.75,4))             #--prior for R0
-        sigma  = numpyro.sample("sigma", dist.Beta( 1/2., (1-(1./2)) ) ) #--prior for sigma, the latent period
-        phi    = numpyro.sample("phi", dist.Beta(0.025*5, (1-0.025)*5))  #--prior for phi, the percent hospitalized during the infectious period
-        
+
+        if self.sigma_preset is None:
+            sigma  = numpyro.sample("sigma", dist.Beta( 1/2., (1-(1./2)) ) ) #--prior for sigma, the latent period
+        else:
+            sigma = self.sigma_preset
+
+        if self.phi_preset is None:
+            phi    = numpyro.sample("phi", dist.Beta(0.025*5, (1-0.025)*5))  #--prior for phi, the percent hospitalized during the infectious period
+        else:
+            phi = self.phi_preset
+            
         gamma = gamma_preset                                             #--gamma, the infectious period, is preset by the user
         kappa = kappa_preset                                             #--kappa, the duration of time in the hospitalization period before movng to R, is preset by the user
 
-        ps = numpyro.sample("ps", dist.Beta( 0.10*5, (1-0.10)*5 ) )      #--The percent of individuals who are susceptible
+        if self.ps_preset is None:
+            ps = numpyro.sample("ps", dist.Beta( 0.10*5, (1-0.10)*5 ) )      #--The percent of individuals who are susceptible
+        else:
+            ps = self.ps_preset
 
-        E0 = numpyro.sample( "E0", dist.Uniform(1./self.population, 20./self.population) )       #--The proportion of exposed individuals at time 0
-        I0 = numpyro.sample( "I0", dist.Uniform(1./self.population, 20./self.population) )       #--The proportion of infectious individuals at time 0
+        if self.E0_preset is None:
+            E0 = numpyro.sample( "E0", dist.Uniform(1./self.population, 20./self.population) )       #--The proportion of exposed individuals at time 0
+        else:
+            E0 = self.E0_preset
 
+        if self.I0_preset is None:
+            I0 = numpyro.sample( "I0", dist.Uniform(1./self.population, 20./self.population) )       #--The proportion of infectious individuals at time 0
+        else:
+            I0 = self.I0_preset
+
+        if self.surveillance_concentration is None:
+            surveillance_concentration = numpyro.sample("surveillance_concentration" , dist.Uniform(0.01,10))
+        else:
+            surveillance_concentration = self.surveillance_concentration
+            
         S0 = ps*1. - I0                                                  #--The proportion of susceptible individuals at time 0
         H0 = 0                                                           #--The proportion of hospitalized individuals at time 0
         R0 = 1. - S0 - I0 - E0                                           #--The proportion of removed/recovered individuals at time 0
@@ -83,8 +123,8 @@ class chimeric_forecast(object):
         #--Extract the proportion of incident hospitalizations
         inc_hosp_proportion = states[:,-1]
 
-        #--The proportion of incident hospitalizations cannot be smaller than 0 or greater than 1
-        inc_hosp_proportion = jnp.clip(inc_hosp_proportion,a_min=0,a_max= ps)
+        #--The proportion of incident hospitalizations cannot be smaller than machine epsilon or greater than 1
+        inc_hosp_proportion = jnp.clip(inc_hosp_proportion,a_min=0.,a_max= ps)
 
         #--Compute the number of incident hospitalizations as the proportion times the total number of individuals
         inc_hosps = (inc_hosp_proportion*self.population).reshape(-1,)
@@ -92,6 +132,9 @@ class chimeric_forecast(object):
         #--Record the number of incident hospitalizations
         inc_hosps = numpyro.deterministic("inc_hosps",inc_hosps)
 
+        #--add machine epsilon
+        inc_hosps = inc_hosps + jnp.finfo(float).eps
+        
         #--Extract from the above vector the peak time and the peak value
         peak_time, peak_value = jnp.argmax(inc_hosps), jnp.max(inc_hosps)
 
@@ -107,7 +150,7 @@ class chimeric_forecast(object):
 
             #--Compute the log likelihood. The 1./3 is preset
             with numpyro.handlers.mask(mask=mask[:T]):
-                ll_surveillance = numpyro.sample("ll_surveillance", dist.NegativeBinomial2(inc_hosps[:T], 1./3), obs = self.surveillance_data)
+                ll_surveillance = numpyro.sample("ll_surveillance", dist.NegativeBinomial2(inc_hosps[:T], surveillance_concentration), obs = self.surveillance_data)
 
         #--human judgment predictions of peak time and intensity
         if self.humanjudgment_data is None:
@@ -145,11 +188,12 @@ class chimeric_forecast(object):
 
     def fit_model(self, print_summary=True):
         from numpyro.infer import NUTS, MCMC
+        #from numpyro.infer import init_to_feasible
         import numpy as np
         
         #--Sample with NUTS
-        nuts_kernel = NUTS(self.model_specificiation)
-        mcmc        = MCMC( nuts_kernel , num_warmup=3000, num_samples=2000,progress_bar=True)
+        nuts_kernel = NUTS(self.model_specificiation)#, init_strategy=init_to_feasible())
+        mcmc        = MCMC( nuts_kernel , num_warmup=4000, num_samples=2000,progress_bar=True)
         mcmc.run(self.rng_key, extra_fields=('potential_energy',))
 
         #--print summary is optional
