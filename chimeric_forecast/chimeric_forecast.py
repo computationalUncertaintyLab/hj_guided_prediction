@@ -6,6 +6,7 @@ class chimeric_forecast(object):
                  , population                  = 12*10**6
                  , total_window_of_observation = 210
                  , peak_time_and_values        = None
+                 , peak_time_and_values_independent = None
                  , peak_times_only             = None
                  , peak_values_only            = None
                  , humanjudgment_data          = None
@@ -17,11 +18,12 @@ class chimeric_forecast(object):
                  , E0_preset                   = None
                  , I0_preset                   = None
                  , surveillance_concentration  = None
-                 ):
+                ):
         self.surveillance_data           = surveillance_data
         self.population                  = population
         self.total_window_of_observation = total_window_of_observation
         self.peak_time_and_values        = peak_time_and_values
+        self.peak_time_and_values_independent = peak_time_and_values_independent
         self.peak_times_only             = peak_times_only
         self.peak_values_only            = peak_values_only
         self.humanjudgment_data          = humanjudgment_data
@@ -177,6 +179,17 @@ class chimeric_forecast(object):
                 #--Loglikelihood
                 with numpyro.plate("observations", N):
                     obs = numpyro.sample("obs", dist.MultivariateStudentT(loc=mu, scale_tril=cov_mat, df=1), obs= self.humanjudgment_data)
+
+            elif self.peak_time_and_values_independent:
+                s = numpyro.sample("s", dist.HalfCauchy(1*jnp.ones(1,))) #--standard deviation
+
+                if len(self.humanjudgment_data)==1:
+                    s = 1.
+                    ll_peak_times  = numpyro.sample("ll_peak_times", dist.Normal( peak_time, s )         , obs = self.humanjudgment_data[:,0].reshape(-1,) )
+                    ll_peak_values = numpyro.sample("ll_peak", dist.NegativeBinomial2( peak_value, 0.3 ), obs = self.humanjudgment_data[:,1].reshape(-1,) )
+                else:
+                    ll_peak_times = numpyro.sample("ll_peak_times", dist.Normal( peak_time, s )        , obs = self.humanjudgment_data[:,0] )
+                    ll_peak_values = numpyro.sample("ll_peak", dist.NegativeBinomial2( peak_value, 0.3 ), obs = self.humanjudgment_data[:,1] )
 
             #--If the user has collected only both peak times and not collected peak intensities
             elif self.peak_times_only:
