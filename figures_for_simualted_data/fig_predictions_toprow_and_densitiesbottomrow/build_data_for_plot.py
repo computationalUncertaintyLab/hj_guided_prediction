@@ -1,13 +1,13 @@
 #mcandrew
 
 import sys
-sys.path.append("../chimeric_forecast")
+sys.path.append("../../chimeric_forecast")
 
 import numpy as np
 import pandas as pd
 import pickle
 
-from chimeric_forecast__weighted_ll import chimeric_forecast 
+from chimeric_forecast__meld import chimeric_forecast 
 from generate_simulated_data import generate_data
 from generate_humanjudgment_prediction_data import generate_humanjudgment_prediction_data 
 
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     past_season_peak_data.to_csv("./past_season_peak_data.csv",index=False)
 
     #--generate simulated human judgment predictins
-    hj_data  = generate_humanjudgment_prediction_data(true_incident_hospitalizations = inc_hosps, time_at_peak = time_at_peak, rng_key  = rng_key ) 
+    hj_data  = generate_humanjudgment_prediction_data(true_incident_hospitalizations = inc_hosps, span = 7, noise=100., time_at_peak = time_at_peak, rng_key  = rng_key ) 
     noisy_time_at_peaks, noisy_peak_values, noisy_human_predictions = hj_data.generate_predictions()
 
     #--save human judgement data for records
@@ -72,7 +72,7 @@ if __name__ == "__main__":
         d, h, o = o #--these are the options that control what information gets to the model
         
         #--fit model that uses only prior information
-        forecast = chimeric_forecast(rng_key = rng_key, surveillance_data = d, humanjudgment_data = h, peak_time_and_values = o )
+        forecast = chimeric_forecast(rng_key = rng_key, surveillance_data = d, humanjudgment_data = h, peak_time_and_values = o, surveillance_concentration = 20. )
         forecast.fit_model()
 
         #--record samples of the peak times and intensities to use for bottom row of plot (plot.py)

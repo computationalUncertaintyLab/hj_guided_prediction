@@ -14,6 +14,7 @@ class generate_data(object):
                   ,kappa:      float                        = 1./7                #--Duration of hospitalization period
                   ,ph:         float                        = 0.025               #--Proportion of those who move from infected to hospitalized
                   ,noise:      float                        = 5.95                #--Variance (noise) to add to the true number of incident hospitalizations
+                  ,continuous: int                          = True
                   ,rng_key                                  = None                #--Key for randomization
                  ):
         """
@@ -45,6 +46,7 @@ class generate_data(object):
         self.kappa      = kappa
         self.ph         = ph
         self.noise      = noise
+        self.continuous = continuous
         self.rng_key    = rng_key
         
     def simulate_surveillance_data(self):
@@ -57,7 +59,7 @@ class generate_data(object):
         import numpyro.distributions as dist
  
         from scipy.integrate import odeint
-       
+
         def SEIHR(states,t, params):              #--System used to evolve states according to SEIR dynamics
             s,e,i,h,r,c = states                  #--States are SEIHR and then a sixth state C which records incidetn hospitalizations 
             sigma,beta,gamma,kappa,phi = params   #--Parameters needed are sigma, beta, gamma, kappa, and phi
@@ -92,18 +94,52 @@ class generate_data(object):
         #--Bundle together parameters to use for integration
         params = [sigma, beta, gamma, kappa, ph] 
 
-        #--integrate system
-        states = odeint( lambda states,t: SEIHR(states,t,params), [S0,E0,I0,H0,R0, H0], times  )
+        if self.continuous:
+            #--integrate system
+            states = odeint( lambda states,t: SEIHR(states,t,params), [S0,E0,I0,H0,R0, H0], times  )
 
-        #--extract cumulative proportion of hospitalizations over time
-        cum_hosps     = states[:,-1]
+            #--extract cumulative proportion of hospitalizations over time
+            cum_hosps     = states[:,-1]
 
-        #--append the initial cumualtive proportion
-        cum_hosps = np.append(H0,cum_hosps)
+            #--append the initial cumualtive proportion
+            cum_hosps = np.append(H0,cum_hosps)
 
-        #--compute number of incident hospitalizations
-        inc_hosps     = np.clip(np.diff(cum_hosps)*self.population, 0, np.inf)
+            #--compute number of incident hospitalizations
+            inc_hosps     = np.clip(np.diff(cum_hosps)*self.population, 0, np.inf)
 
+        else:
+            def evolve(carry,array, params):       #--Determinsitic system used to evolve states according to SEIR dynamics
+                s,e,i,h,r,c = carry                #--States are SEIHR and then a sixth state C which records incidetn hospitalizations
+                sigma,beta,gamma,kappa = params    #--Parameters needed are sigma, beta, gamma and kappa
+
+                s2e = s*beta*i
+                e2i = sigma*e
+                i2h = gamma*i*ph
+                i2r = gamma*i*(1-ph)
+                h2r = kappa*h
+
+                ns = s-s2e
+                ne = e+s2e - e2i
+                ni = i+e2i - (i2h+i2r)
+                nh = h+i2h - h2r
+                nr = r+i2r + h2r
+
+                nc = i2h
+
+                states = jnp.vstack( (ns,ne,ni,nh,nr, nc) )
+                return states, states
+            
+            final, states = jax.lax.scan( lambda x,y: evolve(x,y, (sigma, beta, gamma,kappa) ), jnp.vstack( (S0,E0,I0,H0,R0, H0) ), times)
+
+            #--Extract the proportion of incident hospitalizations
+            inc_hosp_proportion = states[:,-1]
+
+            #--The proportion of incident hospitalizations cannot be smaller than machine epsilon or greater than 1
+            inc_hosp_proportion = jnp.clip(inc_hosp_proportion,a_min=0.,a_max= ps)
+
+            #--Compute the number of incident hospitalizations as the proportion times the total number of individuals
+            inc_hosps = (inc_hosp_proportion*self.population).reshape(-1,)
+            
         #--add noise to inc_hosps according to an NB2
         noisy_hosps = np.asarray(dist.NegativeBinomial2( inc_hosps, self.noise ).sample(self.rng_key)) 
 

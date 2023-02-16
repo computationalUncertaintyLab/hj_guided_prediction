@@ -70,7 +70,7 @@ if __name__ == "__main__":
         ax.set_xticks([7*x for x in np.arange(0,30,6)] + [210])
 
         #--set ylim and yticks in intervals of weeks
-        ax.set_ylim(0,800)
+        ax.set_ylim(0,2000)
         ax.set_yticks([250,500,800])
  
         if n>=1:
