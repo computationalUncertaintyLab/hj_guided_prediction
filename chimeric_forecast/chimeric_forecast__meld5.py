@@ -38,8 +38,6 @@ class chimeric_forecast(object):
         
         self.rng_key                     = rng_key
 
-
-       
     def model_specificiation(self
                              , gamma_preset = 1./1
                              , kappa_preset = 1./7
@@ -135,17 +133,28 @@ class chimeric_forecast(object):
 
         if prior==True:
             if self.humanjudgment_data is not None:
-                hj_peak_values = self.humanjudgment_data[:,1] 
-                ll_peak_values = numpyro.sample("ll_peak_values", dist.TruncatedNormal( jnp.mean(hj_peak_values), 10*jnp.std(hj_peak_values) , low=0., high= jnp.max(hj_peak_values) ), obs = peak_value )
+                hj_values = self.humanjudgment_data[:,1]
+                hj_times  = self.humanjudgment_data[:,0]
+
+                Hbound = jnp.array(1. + 1./len(hj_values))
                 
-                hj_peak_times = self.humanjudgment_data[:,0] 
-                ll_peak_times = numpyro.sample("ll_peak_times", dist.Uniform( jnp.min(hj_peak_times), jnp.max(hj_peak_times) ), obs = peak_time )
+                upper = jnp.where( peak_value > 2.*jnp.max(hj_values)*Hbound, -jnp.inf, dist.Uniform(0,2.*jnp.max(hj_values)*Hbound ).log_prob(peak_value) )
+                numpyro.factor("upper_bound_peak_value", upper)
+
+                lower = lambda x: jnp.where( x < (1./2)*jnp.min(hj_values)*(1./Hbound)  , -jnp.inf, dist.Uniform(0, (1./2)*jnp.min(hj_values)*(1./Hbound) ).log_prob(x) )
+                numpyro.factor("lower_bound_peak_value", lower(peak_value) )
+
+                #--times
+                upper_time = lambda x: jnp.where( x > 2*jnp.max(hj_times)*Hbound , -jnp.array(10**-8), dist.Uniform(0, (2.)*jnp.max(hj_times)*Hbound ).log_prob(x) )
+                numpyro.factor("upper_bound_peak_time", upper_time(peak_time) )
+
+                lower_time = lambda x: jnp.where( x < (2.)*jnp.min(hj_times)*(1./Hbound), -jnp.array(10**-8), dist.Uniform(0, (2.)*jnp.min(hj_times)*(1./Hbound) ).log_prob(x) )
+                numpyro.factor("lower_bound_peak_time", lower_time(peak_time) )
+
+                numpyro.sample("center_time", dist.Normal( jnp.mean(hj_times), 28), obs = peak_time )
+                
+
         else:
-            if self.surveillance_concentration is not None:
-                surv_conc = self.surveillance_concentration
-            else:
-                surv_conc = numpyro.sample("surv_conc", dist.Exponential(1.))
-                
             #--surveillance data
             if self.surveillance_data is None:
                 pass
@@ -153,20 +162,29 @@ class chimeric_forecast(object):
                 T    = len(self.surveillance_data)    #--T is the number of time units of surveillance data that we have. T < total_window_of_observation
                 mask = ~jnp.isnan(inc_hosps)          #--This is used to exclude missing surveillance data fro mthe log likelihood
 
-                #--Compute the log likelihood. The 1./3 is preset
+                surv_conc = numpyro.sample("surv_conc", dist.Exponential(1.))
                 with numpyro.handlers.mask(mask=mask[:T]):
-                    ll_surveillance = numpyro.sample("ll_surveillance", dist.NegativeBinomial2(inc_hosps[:T], surv_conc ), obs = self.surveillance_data)
+                    numpyro.sample("ll_surveillance", dist.NegativeBinomial2(inc_hosps[:T], surv_conc ), obs = self.surveillance_data)
                     
             if self.humanjudgment_data is not None:
-                hj_peak_values = self.humanjudgment_data[:,1]
+                hj_values = self.humanjudgment_data[:,1]
+                hj_times  = self.humanjudgment_data[:,0]
 
-                ll_peak_values = numpyro.sample("ll_peak_values", dist.TruncatedNormal( jnp.mean(hj_peak_values), 2*jnp.std(hj_peak_values) , low=0., high= jnp.max(hj_peak_values) ), obs = peak_value )
-                #ll_peak_values = numpyro.sample("ll_peak_values", dist.Uniform(0., 2*jnp.max(hj_peak_values) ), obs = peak_value )
-                
-                hj_peak_times = self.humanjudgment_data[:,0] 
-                ll_peak_times = numpyro.sample("ll_peak_times", dist.Uniform( jnp.min(hj_peak_times)/2, 2*jnp.max(hj_peak_times) ), obs = peak_time )
-                
-                
+                Hbound = jnp.array(1. + 1./len(hj_values))
+
+                upper = jnp.where( peak_value > 3.*jnp.max(hj_values)*Hbound, -jnp.inf, dist.Uniform(0,3.*jnp.max(hj_values)*Hbound).log_prob(peak_value) )
+                numpyro.factor("upper_bound_peak_value", upper)
+
+                lower = lambda x: jnp.where( x < (1./2)*jnp.min(hj_values)*(1./Hbound), -jnp.inf, dist.Uniform(0, (1./2)*jnp.min(hj_values)*(1./Hbound) ).log_prob(x) )
+                numpyro.factor("lower_bound_peak_value", lower(peak_value) )
+
+                #--times
+                upper_time = lambda x: jnp.where( x > 2*jnp.max(hj_times)*Hbound, -jnp.inf, dist.Uniform(0, (2.)*jnp.max(hj_times)*Hbound ).log_prob(x) )
+                numpyro.factor("upper_bound_peak_time", upper_time(peak_time) )
+
+                lower_time = lambda x: jnp.where( x < (1./2)*jnp.min(hj_times)*(1./Hbound) , -jnp.inf, dist.Uniform(0, (1./2)*jnp.min(hj_times)*(1./Hbound) ).log_prob(x) )
+                numpyro.factor("lower_bound_peak_time", lower_time(peak_time) )
+
     def fit_priors(self):
         def fit_beta(data):
             import numpy as np
@@ -225,13 +243,13 @@ class chimeric_forecast(object):
             return (a,b)
 
         
-        self.prior_r0_0, self.prior_r0_1 = 1. , 1.
-        self.prior_E0_0, self.prior_E0_1 = 2.5, 1.
-        self.prior_I0_0, self.prior_I0_1 = 2.5, 1.
+        self.prior_r0_0, self.prior_r0_1 = 0. , 10.
+        self.prior_E0_0, self.prior_E0_1 = 1, 2.
+        self.prior_I0_0, self.prior_I0_1 = 1, 2.
         
-        self.prior_sigma_0, self.prior_sigma_1 = 1*(0.25), 1*(1-0.25)
-        self.prior_phi_0  , self.prior_phi_1   = 1*(0.25), 1*(1-0.25)
-        self.prior_ps_0   , self.prior_ps_1    = 1*(0.25), 1*(1-0.25)
+        self.prior_sigma_0, self.prior_sigma_1 = 1*(0.5), 1*(0.5)
+        self.prior_phi_0  , self.prior_phi_1   = 1*(0.5), 1*(0.5)
+        self.prior_ps_0   , self.prior_ps_1    = 1*(0.5), 1*(0.5)
 
         def mix_beta(a,b,c,d):
             import numpy as np
@@ -254,7 +272,7 @@ class chimeric_forecast(object):
         
     def fit_model(self, prior=None, print_summary=True):
         import numpyro
-        from numpyro.infer import NUTS, MCMC, init_to_value, init_to_median, init_to_uniform
+        from numpyro.infer import NUTS, MCMC, init_to_value, init_to_median, init_to_uniform, init_to_feasible
         import numpy as np
 
         if self.humanjudgment_data is not None:
@@ -282,20 +300,25 @@ class chimeric_forecast(object):
 
             #--approximate and mix priors
             self.fit_priors()
-            self.mix_with_vague()
+            #self.mix_with_vague()
 
             #--update model to train on surveillance data
             updated_model = numpyro.handlers.substitute(self.model_specificiation
-                                                        , {"fitted_r0_0": self.fitted_r0_0 , "fitted_r0_1": self.fitted_r0_1
+                                                        , {"fitted_r0_0"    :self.fitted_r0_0   , "fitted_r0_1": self.fitted_r0_1
                                                            ,"fitted_sigma_0":self.fitted_sigma_0, "fitted_sigma_1":self.fitted_sigma_1
-                                                           ,"fitted_phi_0":self.fitted_phi_0, "fitted_phi_1":self.fitted_phi_1
-                                                           ,"fitted_ps_0":self.fitted_ps_0  , "fitted_ps_1":self.fitted_ps_1
-                                                           ,"fitted_E0_0":self.fitted_E0_0, "fitted_E0_1":self.fitted_E0_1
-                                                           ,"fitted_I0_0":self.fitted_I0_0, "fitted_I0_1":self.fitted_I0_1})
-            
+                                                           ,"fitted_phi_0"  :self.fitted_phi_0  , "fitted_phi_1":self.fitted_phi_1
+                                                           ,"fitted_ps_0"   :self.fitted_ps_0   , "fitted_ps_1":self.fitted_ps_1
+                                                           ,"fitted_E0_0"   :self.fitted_E0_0   , "fitted_E0_1":self.fitted_E0_1
+                                                           ,"fitted_I0_0"   :self.fitted_I0_0   , "fitted_I0_1":self.fitted_I0_1})
+
             nuts_kernel = NUTS(updated_model, dense_mass=True, max_tree_depth=10)
             mcmc        = MCMC( nuts_kernel , num_warmup=4000, num_samples=4000,progress_bar=True)
             mcmc.run(self.rng_key, extra_fields=('potential_energy',), prior=False)
+
+            #--print summary is optional
+            if print_summary:
+                mcmc.print_summary()
+ 
 
             #--Collect samples from NUTS
             samples = mcmc.get_samples()
@@ -336,10 +359,7 @@ class chimeric_forecast(object):
             self.posterior_samples = stripped_samples
             return stripped_samples
             
-        #--print summary is optional
-        if print_summary:
-            mcmc.print_summary()
-      
+     
     def compute_quantiles(self,qs = [2.5, 10., 25.0, 37.5, 50., 62.5, 75., 90., 97.5],attribute = "inc_hosps"):
         import numpy as np
         import pandas as pd
@@ -373,12 +393,12 @@ if __name__ == "__main__":
 
     #--generate simulated human judgment predictins
     hj_data  = generate_humanjudgment_prediction_data(true_incident_hospitalizations = inc_hosps
-                                                      , noise = 1.
-                                                      , number_of_humanjudgment_predictions=50
+                                                      , noise = 10.
+                                                      , number_of_humanjudgment_predictions=10
                                                       , time_at_peak = time_at_peak
                                                       , rng_key  = rng_key
-                                                      , bias_time = 10
-                                                      , span=28) 
+                                                      , bias_time = 0
+                                                      , span=7) 
     noisy_time_at_peaks, noisy_peak_values, noisy_human_predictions = hj_data.generate_predictions()
     
     
@@ -389,8 +409,6 @@ if __name__ == "__main__":
     forecast = chimeric_forecast(rng_key = rng_key, surveillance_data = noisy_hosps[:cut]
                                  , humanjudgment_data = noisy_human_predictions
                                  , peak_time_and_values=True)
-    
-    
     forecast.fit_model()
 
     forecast2 = chimeric_forecast(rng_key = rng_key, surveillance_data = noisy_hosps[:cut]
