@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pickle
 
-from chimeric_forecast__weighted_ll import chimeric_forecast 
+from chimeric_forecast__meld7 import chimeric_forecast 
 from generate_simulated_data import generate_data
 from generate_humanjudgment_prediction_data import generate_humanjudgment_prediction_data 
 
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     all_cover_data      = pd.DataFrame()
 
     #--factors
-    for WEEK in [4,3,2,1,-2]:
+    for WEEK in [3,4,2,1,-2]:
         for NOISE in [2.50, 5.0, 10.]:
             for MODEL in [0,1]: #--we assume that times are more similar and intesite (ie smaller variance)
 
@@ -63,14 +63,26 @@ if __name__ == "__main__":
                 filenames = ["prior", "survdata","surv_data_plus_past", "survdata_plus_hj"]
                 options   = [(None, None, None)
                              , (noisy_hosps.training_data.to_numpy(), None, None)
-                             , (noisy_hosps.training_data.to_numpy(), past_season_peak_data.to_numpy(), True)
-                             , (noisy_hosps.training_data.to_numpy(), noisy_human_predictions.to_numpy(), True)]
+                             , (noisy_hosps.training_data.to_numpy(), noisy_human_predictions.to_numpy(), past_season_peak_data.to_numpy())
+                             , (noisy_hosps.training_data.to_numpy(), None, past_season_peak_data.to_numpy())]
     
                 for f,o in zip(filenames,options) :
-                    d, h, o = o #--these are the options that control what information gets to the model
+                    print(f)
+                    d, h, p = o #--these are the options that control what information gets to the model
+
+                    if h is not None and f=="survdata_plus_hj":
+                        print(np.max(h,0))
+                        h = h[ (h[:,0] <=210) & (h[:,0]>=0 ) & (h[:,1] <= 2500) & (h[:,1]>=0) ]
+
+                        peak_10,peak_90 = np.percentile( h[:,1], [10,90] )
+                        time_10,time_90 = np.percentile( h[:,0], [10,90] )
+
+                        h = h[ (time_10 < h[:,0]) & (h[:,0] < time_90) & (peak_10 < h[:,1]) & (h[:,1] < peak_90)]
+                        
+                        print(np.max(h,0))
 
                     #--fit model that uses only prior information
-                    forecast = chimeric_forecast(rng_key = rng_key, surveillance_data = d, humanjudgment_data = h, peak_time_and_values = o )
+                    forecast = chimeric_forecast(rng_key = rng_key, surveillance_data = d, humanjudgment_data = h, past_season_data = p )
                     forecast.fit_model()
 
                     #--record samples of the peak times and intensities to use for bottom row of plot (plot.py)
