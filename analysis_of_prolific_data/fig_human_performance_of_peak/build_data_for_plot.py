@@ -24,4 +24,6 @@ if __name__ == "__main__":
     hj["diff_time"] = hj.peak_time - PEAK
     hj["diff_intensity"] = hj.peak_intensity - PEAK_VALUE
 
+    hj.to_csv("./hj.csv",index=False)
+
     
