@@ -19,6 +19,7 @@ from chimeric_forecast.generate_humanjudgment_prediction_data import generate_hu
 import numpyro
 import numpyro.distributions as dist
 
+import argparse
 if __name__ == "__main__":
     rng_key     = random.PRNGKey(123986)    #--seed for random number generation
     total_window_of_observation = 210
@@ -134,8 +135,8 @@ if __name__ == "__main__":
 
         return qtheta0s
 
-    
-    rslts = Parallel(n_jobs=25)(delayed(simulation)(i0,e0,ps,sigma,r0,ph,sim) for  sim,(i0,e0,ps,sigma,r0,ph) in enumerate(zip(random_i0,random_e0,random_ps,random_sigma,random_r0,random_ph)) )
+    from joblib import Parallel, delayed
+    rslts = Parallel(n_jobs=10)(delayed(simulation)(i0,e0,ps,sigma,r0,ph,sim) for  sim,(i0,e0,ps,sigma,r0,ph) in enumerate(zip(random_i0,random_e0,random_ps,random_sigma,random_r0,random_ph)) )
 
     d = {"sim":[], "q_peak_time":[], "q_peak_intensity":[]}
     for rslt in rslts:
