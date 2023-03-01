@@ -61,8 +61,7 @@ class chimeric_forecast(object):
         final, states = jax.lax.scan( lambda x,y: evolve(x,y, dynamic_params  ), jnp.vstack(init_states), times)   
         return states
 
-
-    def find_initial_params(self,maxiter=10**5, gamma_preset = 1., kappa_preset = 1./7):
+    def find_initial_params(self,maxiter=10**2, gamma_preset = 1., kappa_preset = 1./7):
         import jax.numpy as jnp
         import numpy as np
 
