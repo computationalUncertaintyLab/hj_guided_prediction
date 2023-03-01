@@ -75,6 +75,7 @@ class chimeric_forecast(object):
         
         iter = 0
         while iter<maxiter:
+            print(iter)
             iter+=1
             
             sigma = np.random.beta(0.5,0.5)
