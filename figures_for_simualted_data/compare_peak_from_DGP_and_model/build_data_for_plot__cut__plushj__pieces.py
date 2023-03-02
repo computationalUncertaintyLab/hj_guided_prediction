@@ -115,48 +115,51 @@ if __name__ == "__main__":
         #--train model
         time_before_peak = time_at_peak - 4*7
 
-        forecast = chimeric_forecast(rng_key = random.PRNGKey(np.random.randint(low=0,high=9999999))
-                                                  , surveillance_data  = noisy_hosps[:time_before_peak]
-                                                  , humanjudgment_data = hj_data
-                                                  , past_season_data   = None
-                                     )
-        forecast.fit_model()
+        try: #May not be able to find valid initial parameters depednign on the data
+            forecast = chimeric_forecast(rng_key = random.PRNGKey(np.random.randint(low=0,high=9999999))
+                                                      , surveillance_data  = noisy_hosps[:time_before_peak]
+                                                      , humanjudgment_data = hj_data
+                                                      , past_season_data   = None
+                                         )
+            forecast.fit_model()
 
-        quantiles_for_incident_hosps = forecast.compute_quantiles()
-        quantiles_for_incident_hosps["t"] = np.arange(0,210)
-        #--posterior samples of peak
-        peak_times_and_intensities = forecast.posterior_samples["peak_time_and_value"]
+            quantiles_for_incident_hosps = forecast.compute_quantiles()
+            quantiles_for_incident_hosps["t"] = np.arange(0,210)
+            #--posterior samples of peak
+            peak_times_and_intensities = forecast.posterior_samples["peak_time_and_value"]
 
-        #compare posterior samples to truth
-        qtheta0_peak_time      = float(np.mean( time_at_peak > peak_times_and_intensities[:,0]))
-        qtheta0_peak_intensity = float(np.mean( peak_value > peak_times_and_intensities[:,1]))
+            #compare posterior samples to truth
+            qtheta0_peak_time      = float(np.mean( time_at_peak > peak_times_and_intensities[:,0]))
+            qtheta0_peak_intensity = float(np.mean( peak_value > peak_times_and_intensities[:,1]))
 
-        qtheta0s["sim"].append(sim)
-        qtheta0s["q_peak_time_hj"].append(qtheta0_peak_time)
-        qtheta0s["q_peak_intensity_hj"].append(qtheta0_peak_intensity)
+            qtheta0s["sim"].append(sim)
+            qtheta0s["q_peak_time_hj"].append(qtheta0_peak_time)
+            qtheta0s["q_peak_intensity_hj"].append(qtheta0_peak_intensity)
 
-        #--SURVEILLANCE ONLY
-        
-        forecast_surv = chimeric_forecast(rng_key = random.PRNGKey(np.random.randint(low=0,high=9999999))
-                                                  , surveillance_data  = noisy_hosps[:time_before_peak]
-                                                  , humanjudgment_data = None
-                                                  , past_season_data   = None
-                                     )
-        forecast_surv.fit_model()
+            #--SURVEILLANCE ONLY
 
-        quantiles_for_incident_hosps = forecast_surv.compute_quantiles()
-        quantiles_for_incident_hosps["t"] = np.arange(0,210)
-        
-        #--posterior samples of peak
-        peak_times_and_intensities = forecast_surv.posterior_samples["peak_time_and_value"]
+            forecast_surv = chimeric_forecast(rng_key = random.PRNGKey(np.random.randint(low=0,high=9999999))
+                                                      , surveillance_data  = noisy_hosps[:time_before_peak]
+                                                      , humanjudgment_data = None
+                                                      , past_season_data   = None
+                                         )
+            forecast_surv.fit_model()
 
-        #compare posterior samples to truth
-        qtheta0_peak_time      = float(np.mean( time_at_peak > peak_times_and_intensities[:,0]))
-        qtheta0_peak_intensity = float(np.mean( peak_value > peak_times_and_intensities[:,1]))
-        
-        qtheta0s["q_peak_time_surv"].append(qtheta0_peak_time)
-        qtheta0s["q_peak_intensity_surv"].append(qtheta0_peak_intensity)
-       
+            quantiles_for_incident_hosps = forecast_surv.compute_quantiles()
+            quantiles_for_incident_hosps["t"] = np.arange(0,210)
+
+            #--posterior samples of peak
+            peak_times_and_intensities = forecast_surv.posterior_samples["peak_time_and_value"]
+
+            #compare posterior samples to truth
+            qtheta0_peak_time      = float(np.mean( time_at_peak > peak_times_and_intensities[:,0]))
+            qtheta0_peak_intensity = float(np.mean( peak_value > peak_times_and_intensities[:,1]))
+
+            qtheta0s["q_peak_time_surv"].append(qtheta0_peak_time)
+            qtheta0s["q_peak_intensity_surv"].append(qtheta0_peak_intensity)
+        except:
+            return {"sim":[],"q_peak_time_surv":[],"q_peak_intensity_surv":[],"q_peak_time_hj":[],"q_peak_intensity_hj":[]}
+
         return qtheta0s
 
     from joblib import Parallel, delayed
