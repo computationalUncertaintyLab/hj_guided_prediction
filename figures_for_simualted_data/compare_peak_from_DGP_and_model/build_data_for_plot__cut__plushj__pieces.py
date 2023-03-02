@@ -122,7 +122,7 @@ if __name__ == "__main__":
         hj = generate_humanjudgment_prediction_data(true_incident_hospitalizations = inc_hosps
                                                     , time_at_peak = time_at_peak
                                                     , span    = 7.
-                                                    , noise   = 25.
+                                                    , noise   = NOISE
                                                     , number_of_humanjudgment_predictions=100
                                                     , rng_key = random.PRNGKey(np.random.randint(low=0,high=9999999)) )
         hj_times, hj_peaks, hj_data = hj.generate_predictions()
