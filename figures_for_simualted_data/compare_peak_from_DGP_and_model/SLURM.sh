@@ -21,6 +21,9 @@ conda activate $HOME/condaenv/flu
 
 #--export environmental variables
 export N=${N}
-python build_data_for_plot__cut__plushj__pieces.py --N ${N}
+export TIME=${TIME}
+export NOISE=${NOISE}
+
+python build_data_for_plot__cut__plushj__pieces.py --N ${N} --NOISE ${NOISE} --TIME ${TIME}
 
 exit
