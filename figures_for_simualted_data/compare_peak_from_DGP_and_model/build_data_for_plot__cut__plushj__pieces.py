@@ -53,11 +53,17 @@ if __name__ == "__main__":
     random_r0    = dist.Uniform(0.75,4).sample( random.PRNGKey(20220302), (3*10**3,) )
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--N', type=int) 
-
-    args = parser.parse_args()
-    N = args.N
-
+    parser.add_argument('--N', type=int)
+    parser.add_argument('--NOISE', type=float)
+    parser.add_argument('--TIME', type=int) 
+    
+    
+    args  = parser.parse_args()
+    N     = args.N
+    NOISE = args.NOISE
+    TIME  = args.TIME
+    
+    
     random_i0    = random_i0[N:N+10]
     random_e0    = random_e0[N:N+10]
     random_ps    = random_ps[N:N+10]
@@ -68,10 +74,19 @@ if __name__ == "__main__":
     #--these were not random and instead fixed.
     fixed_gamma = 1.
     fixed_kappa = 1./7
-    noise       = 5.
+    noise       = NOISE*1.
 
     def simulation(i0,e0,ps,sigma,r0,ph, sim=0):
-        qtheta0s = {"sim":[], "q_peak_time_hj":[], "q_peak_intensity_hj":[], "q_peak_time_surv":[],"q_peak_intensity_surv":[]}
+        qtheta0s = {"sim":[]
+                    , "q_peak_time_hj":[]
+                    , "q_peak_intensity_hj":[]
+                    , "q_noisy_peak_time_hj":[]
+                    , "q_noisy_peak_intensity_hj":[]
+                    , "q_peak_time_surv":[]
+                    , "q_peak_intensity_surv":[]
+                    , "q_noisy_peak_time_surv":[]
+                    , "q_noisy_peak_intensity_surv":[]
+                    }
         surv_data = generate_data(rng_key = random.PRNGKey(np.random.randint(low=0,high=9999999))
                                   , r0    = r0
                                   , I0    = i0
@@ -85,6 +100,9 @@ if __name__ == "__main__":
                                   , noise = noise
                                   , continuous = False)
         inc_hosps, noisy_hosps, time_at_peak, peak_value = surv_data.simulate_surveillance_data()
+
+        noisy_time_at_peak = np.argmax(noisy_hosps)
+        noisy_peak_value   = noisy_hosps[noisy_time_at_peak]
 
         sim_data["sim"].extend( [sim]*total_window_of_observation  )
 
@@ -110,9 +128,9 @@ if __name__ == "__main__":
         hj_times, hj_peaks, hj_data = hj.generate_predictions()
 
         #--train model
-        time_before_peak = max(0, time_at_peak - 4*7)
+        time_before_peak = max(0, time_at_peak - TIME*7)
         if time_at_peak==0:
-            return {"sim":[],"q_peak_time_surv":[],"q_peak_intensity_surv":[],"q_peak_time_hj":[],"q_peak_intensity_hj":[]}
+            return {"sim":[]}
 
         try: #May not be able to find valid initial parameters depednign on the data
             forecast = chimeric_forecast(rng_key = random.PRNGKey(np.random.randint(low=0,high=9999999))
@@ -135,6 +153,13 @@ if __name__ == "__main__":
             qtheta0s["q_peak_time_hj"].append(qtheta0_peak_time)
             qtheta0s["q_peak_intensity_hj"].append(qtheta0_peak_intensity)
 
+           
+            qtheta0_peak_time      = float(np.mean( noisy_time_at_peak > peak_times_and_intensities[:,0]))
+            qtheta0_peak_intensity = float(np.mean( noisy_peak_value > peak_times_and_intensities[:,1]))
+
+            qtheta0s["q_noisy_peak_time_hj"].append(qtheta0_peak_time)
+            qtheta0s["q_noisy_peak_intensity_hj"].append(qtheta0_peak_intensity)
+
             #--SURVEILLANCE ONLY
 
             forecast_surv = chimeric_forecast(rng_key = random.PRNGKey(np.random.randint(low=0,high=9999999))
@@ -156,8 +181,15 @@ if __name__ == "__main__":
 
             qtheta0s["q_peak_time_surv"].append(qtheta0_peak_time)
             qtheta0s["q_peak_intensity_surv"].append(qtheta0_peak_intensity)
+
+            qtheta0_peak_time      = float(np.mean( noisy_time_at_peak > peak_times_and_intensities[:,0]))
+            qtheta0_peak_intensity = float(np.mean( noisy_peak_value > peak_times_and_intensities[:,1]))
+
+            qtheta0s["q_noisy_peak_time_surv"].append(qtheta0_peak_time)
+            qtheta0s["q_noisy_peak_intensity_surv"].append(qtheta0_peak_intensity)
+            
         except:
-            return {"sim":[],"q_peak_time_surv":[],"q_peak_intensity_surv":[],"q_peak_time_hj":[],"q_peak_intensity_hj":[]}
+            return {"sim":[]}
 
         return qtheta0s
 
@@ -172,4 +204,4 @@ if __name__ == "__main__":
             d[k].append(v[0])
     qtheta0s = pd.DataFrame(d)
    
-    qtheta0s.to_csv("./cut_time_series_plushj_quantile_peaks__{:02d}.csv".format(N),index=False)
+    qtheta0s.to_csv("./cut_time_series_plushj_quantile_peaks__{:02d}__{:.2f}__{:d}.csv".format(N,NOISE,TIME),index=False)
