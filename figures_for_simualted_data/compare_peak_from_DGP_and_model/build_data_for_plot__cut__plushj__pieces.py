@@ -162,7 +162,7 @@ if __name__ == "__main__":
     from joblib import Parallel, delayed
     rslts = Parallel(n_jobs=10)(delayed(simulation)(i0,e0,ps,sigma,r0,ph,sim) for  sim,(i0,e0,ps,sigma,r0,ph) in enumerate(zip(random_i0,random_e0,random_ps,random_sigma,random_r0,random_ph)) )
 
-    d = {"sim":[], "q_peak_time":[], "q_peak_intensity":[]}
+    d = {"sim":[], "q_peak_time_surv":[], "q_peak_intensity_surv":[],"q_peak_time_hj":[],"q_peak_intensity_hj":[]}
     for rslt in rslts:
         if rslt["sim"] == []:
             continue
