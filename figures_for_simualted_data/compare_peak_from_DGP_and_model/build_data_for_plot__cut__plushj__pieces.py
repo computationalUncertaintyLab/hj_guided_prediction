@@ -49,7 +49,7 @@ if __name__ == "__main__":
     random_ps    = dist.Beta( 0.10*20, (1-0.10)*20 ).sample( random.PRNGKey(20200301), (3*10**3,) )
     random_ph    = dist.Beta(0.025*20, (1-0.025)*20).sample( random.PRNGKey(20230302), (3*10**3,) )
 
-    random_sigma = dist.Beta( 10*1/2., 10*(1-(1./2)) ).sample( random.PRNGKey(20210301), (3*10**3,) )
+    random_sigma = dist.Beta( 10*1/10., 10*(1-(1./10)) ).sample( random.PRNGKey(20210301), (3*10**3,) )
     random_r0    = dist.Uniform(0.75,4).sample( random.PRNGKey(20220302), (3*10**3,) )
 
     parser = argparse.ArgumentParser()
@@ -110,7 +110,9 @@ if __name__ == "__main__":
         hj_times, hj_peaks, hj_data = hj.generate_predictions()
 
         #--train model
-        time_before_peak = time_at_peak - 4*7
+        time_before_peak = max(0, time_at_peak - 4*7)
+        if time_at_peak==0:
+            return {"sim":[],"q_peak_time_surv":[],"q_peak_intensity_surv":[],"q_peak_time_hj":[],"q_peak_intensity_hj":[]}
 
         try: #May not be able to find valid initial parameters depednign on the data
             forecast = chimeric_forecast(rng_key = random.PRNGKey(np.random.randint(low=0,high=9999999))
