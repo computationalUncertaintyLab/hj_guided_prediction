@@ -43,17 +43,14 @@ if __name__ == "__main__":
                 } 
 
     #--randomly geenrated from the same prior as the model fit.
-    random_i0    = dist.Uniform(1./population, 2./population).sample( random.PRNGKey(123986), (1*10**3,) )
-    random_e0    = dist.Uniform(1./population, 2./population).sample( random.PRNGKey(123934), (1*10**3,) )
+    random_i0    = dist.Uniform(1./population, 5./population).sample( random.PRNGKey(123986), (3*10**3,) )
+    random_e0    = dist.Uniform(1./population, 5./population).sample( random.PRNGKey(123934), (3*10**3,) )
     
-    #random_ps    = dist.Beta( 0.10*5, (1-0.10)*5 ).sample( random.PRNGKey(20200301), (1*10**3,) )
-    #random_ph    = dist.Beta(0.025*5, (1-0.025)*5).sample( random.PRNGKey(20230302), (1*10**3,) )
+    random_ps    = dist.Beta( 0.10*20, (1-0.10)*20 ).sample( random.PRNGKey(20200301), (3*10**3,) )
+    random_ph    = dist.Beta(0.025*20, (1-0.025)*20).sample( random.PRNGKey(20230302), (3*10**3,) )
 
-    random_ps = [0.10]*10**3
-    random_ph = [0.025]*10**3
-
-    random_sigma = dist.Beta( 1/2., (1-(1./2)) ).sample( random.PRNGKey(20210301), (1*10**3,) )
-    random_r0    = dist.Uniform(0.75,4).sample( random.PRNGKey(20220302), (1*10**3,) )
+    random_sigma = dist.Beta( 10*1/2., 10*(1-(1./2)) ).sample( random.PRNGKey(20210301), (3*10**3,) )
+    random_r0    = dist.Uniform(0.75,4).sample( random.PRNGKey(20220302), (3*10**3,) )
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--N', type=int) 
