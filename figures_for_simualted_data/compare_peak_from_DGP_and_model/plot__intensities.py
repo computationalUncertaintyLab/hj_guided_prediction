@@ -30,7 +30,7 @@ if __name__ == "__main__":
         return pd.DataFrame({"x":values,"px":np.arange(0.,N)/N})
 
     #--times
-    cdfs = d.groupby(["model","noise","time"], group_keys=True).apply( lambda x: cdf(x,"q_peak_time")).reset_index()
+    cdfs = d.groupby(["model","noise","time"], group_keys=True).apply( lambda x: cdf(x,"q_peak_intensity")).reset_index()
 
     colors = ["blue", "orange", "purple","red"]
     for row,noise in enumerate(cdfs.noise.unique()):
@@ -70,11 +70,11 @@ if __name__ == "__main__":
                     ,transform=ax.transAxes,fontsize=10)
 
             if row==2 and col==3:
-                ax.legend()
+                ax.legend(frameon=False,fontsize=10, handletextpad=0.01, )
             ax.set_aspect('equal', adjustable='box')
 
     w = mm2inch(183)
     fig.set_size_inches(w,w/1.5)
     
-    plt.savefig("fig_calibration_times.pdf")
+    plt.savefig("fig_calibration_intensities.pdf")
     plt.close()
